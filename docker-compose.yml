@@ -6,14 +6,19 @@ services:
     container_name: zenon_plus_v2_db
     restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: zenon_plus_v2
-    ports:
-      - "5435:5432"
     volumes:
       - pgdata-v2:/var/lib/postgresql/data
       - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    networks:
+      - zenon-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d zenon_plus_v2"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   backend-v2:
     build:
@@ -21,30 +26,60 @@ services:
       dockerfile: Dockerfile
     container_name: zenon_plus_v2_backend
     restart: always
-    ports:
-      - "3003:3001"
+    expose:
+      - "3001"
     environment:
       - PORT=3001
-      - DATABASE_URL=postgres://postgres:postgres@db-v2:5432/zenon_plus_v2
-      - JWT_SECRET=super_secret_master_key_for_zenon_plus_v2_encryption_key_998877
-      - FRONTEND_URL=http://localhost:3002
-      - NODE_ENV=development
+      - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@db-v2:5432/zenon_plus_v2
+      - JWT_SECRET=${JWT_SECRET}
+      - FRONTEND_URL=https://${DOMAIN}
+      - NODE_ENV=production
       - ALLOW_SELF_RECORD=false
+      - CLOUDINARY_URL=${CLOUDINARY_URL}
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
     depends_on:
-      - db-v2
+      db-v2:
+        condition: service_healthy
+    networks:
+      - zenon-internal
 
   frontend-v2:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+      args:
+        - VITE_API_URL=https://${DOMAIN}/api/v1
     container_name: zenon_plus_v2_frontend
     restart: always
-    ports:
-      - "3002:3000"
-    environment:
-      - VITE_API_URL=http://localhost:3003/api/v1
+    expose:
+      - "3000"
     depends_on:
       - backend-v2
+    networks:
+      - zenon-internal
+
+  nginx:
+    image: nginx:alpine
+    container_name: zenon_plus_v2_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+    depends_on:
+      - frontend-v2
+      - backend-v2
+    networks:
+      - zenon-internal
+
+networks:
+  zenon-internal:
+    driver: bridge
 
 volumes:
   pgdata-v2:
