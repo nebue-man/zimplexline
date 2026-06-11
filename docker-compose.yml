@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  db-v2:
+    image: postgres:15-alpine
+    container_name: zenon_plus_v2_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: zenon_plus_v2
+    ports:
+      - "5435:5432"
+    volumes:
+      - pgdata-v2:/var/lib/postgresql/data
+      - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+
+  backend-v2:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: zenon_plus_v2_backend
+    restart: always
+    ports:
+      - "3003:3001"
+    environment:
+      - PORT=3001
+      - DATABASE_URL=postgres://postgres:postgres@db-v2:5432/zenon_plus_v2
+      - JWT_SECRET=super_secret_master_key_for_zenon_plus_v2_encryption_key_998877
+      - FRONTEND_URL=http://localhost:3002
+      - NODE_ENV=development
+      - ALLOW_SELF_RECORD=false
+    depends_on:
+      - db-v2
+
+  frontend-v2:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: zenon_plus_v2_frontend
+    restart: always
+    ports:
+      - "3002:3000"
+    environment:
+      - VITE_API_URL=http://localhost:3003/api/v1
+    depends_on:
+      - backend-v2
+
+volumes:
+  pgdata-v2:
