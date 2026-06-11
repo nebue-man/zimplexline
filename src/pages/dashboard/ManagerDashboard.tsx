@@ -13,6 +13,7 @@ import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { IDPhotoViewer } from '../../components/IDPhotoViewer';
 import { EarningsChart } from '../../components/EarningsChart';
 import { Toast, ToastType } from '../../components/Toast';
+import { InviteSection } from '../../components/InviteSection';
 import { formatLKR, formatDate, formatPercent } from '../../utils/format';
 import { API_ENDPOINTS } from '../../utils/constants';
 import api from '../../api/axios';
@@ -331,7 +332,11 @@ export default function ManagerDashboard({ activeTab, setActiveTab }: ManagerDas
       {/* MY TEAM TAB */}
       {activeTab === 'team' && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          
+
+          <InviteSection userRole="manager" />
+
+          <div className="border-t border-slate-200" />
+
           <div>
             <h2 className="text-xl font-bold text-slate-950">My Direct Agents Downline</h2>
             <p className="text-xs text-slate-500 mt-0.5">Managers are assigned up to 5 direct agents only. Click expand button to inspect agent sub-agent members recursively.</p>

@@ -7,6 +7,7 @@ import { Badge } from '../../components/Badge';
 import { Pagination } from '../../components/Pagination';
 import { EarningsChart } from '../../components/EarningsChart';
 import { Toast, ToastType } from '../../components/Toast';
+import { InviteSection } from '../../components/InviteSection';
 import { IDPhotoViewer } from '../../components/IDPhotoViewer';
 import { formatLKR, formatDate, formatPercent } from '../../utils/format';
 import { API_ENDPOINTS } from '../../utils/constants';
@@ -266,6 +267,17 @@ export default function SubagentDashboard({ activeTab, setActiveTab }: SubagentD
             />
           </div>
 
+        </div>
+      )}
+
+      {/* MY TEAM TAB */}
+      {activeTab === 'team' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div>
+            <h2 className="text-xl font-bold text-slate-950">My Team</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Invite new sub-agents to grow your network.</p>
+          </div>
+          <InviteSection userRole="subagent" />
         </div>
       )}
 

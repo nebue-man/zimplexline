@@ -109,3 +109,35 @@ export interface ApiResponse<T> {
   code?: string;
   message?: string;
 }
+
+export interface InviteLink {
+  id: string;
+  token: string;
+  invite_url: string;
+  intended_role: string;
+  is_used: boolean;
+  is_active: boolean;
+  expires_at: string;
+  created_at: string;
+  used_by_name: string | null;
+  used_at: string | null;
+  status: 'active' | 'used' | 'expired' | 'inactive';
+}
+
+export interface InviteInfo {
+  token: string;
+  intended_role: string;
+  parent_name: string;
+  parent_role: string;
+  expires_at: string;
+  is_valid: boolean;
+  reason?: string;
+}
+
+export interface GeneratedInvite {
+  token: string;
+  invite_url: string;
+  intended_role: string;
+  expires_at: string;
+  capacity: { current: number; max: number };
+}

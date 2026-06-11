@@ -134,6 +134,24 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_id ON audit_logs(actor_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
 
+-- Table: invite_links
+CREATE TABLE IF NOT EXISTS invite_links (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  token VARCHAR(64) UNIQUE NOT NULL,
+  created_by UUID REFERENCES users(id) NOT NULL,
+  intended_role VARCHAR(20) NOT NULL,
+  used_by UUID REFERENCES users(id),
+  is_used BOOLEAN DEFAULT false,
+  is_active BOOLEAN DEFAULT true,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_invite_links_token ON invite_links(token);
+CREATE INDEX IF NOT EXISTS idx_invite_links_created_by ON invite_links(created_by);
+CREATE INDEX IF NOT EXISTS idx_invite_links_used_by ON invite_links(used_by);
+
 -- Seed: default commission rates
 INSERT INTO commission_rates (rate_key, rate_value, description) VALUES
   ('manager_own_deposit',                  0.0300, 'Manager earns 3% on own deposit'),

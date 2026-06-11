@@ -38,6 +38,13 @@ export const API_ENDPOINTS = {
     verify: (userId: string) => `/auth/verify/${userId}`,
     resubmitId: '/auth/resubmit-id',
   },
+  invite: {
+    generate: '/auth/invite/generate',
+    validate: (token: string) => `/auth/invite/validate/${token}`,
+    info: (token: string) => `/auth/invite/info/${token}`,
+    myInvites: '/auth/invite/my-invites',
+    deactivate: (token: string) => `/auth/invite/deactivate/${token}`,
+  },
   dashboard: {
     summary: '/dashboard/summary',
     team: '/dashboard/team',

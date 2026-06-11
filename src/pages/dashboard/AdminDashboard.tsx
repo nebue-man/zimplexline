@@ -13,6 +13,7 @@ import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { IDPhotoViewer } from '../../components/IDPhotoViewer';
 import { EarningsChart } from '../../components/EarningsChart';
 import { Toast, ToastType } from '../../components/Toast';
+import { InviteSection } from '../../components/InviteSection';
 import { formatLKR, formatDate, formatPercent } from '../../utils/format';
 import { API_ENDPOINTS } from '../../utils/constants';
 import api from '../../api/axios';
@@ -139,18 +140,15 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
   const fetchUsersList = async () => {
     setUsersLoading(true);
     try {
-      const response = await api.get(API_ENDPOINTS.admin.users, {
-        params: {
-          page: usersPage,
-          limit: 20,
-          role: usersRoleFilter,
-          status: usersStatusFilter,
-          search: usersSearch,
-        },
-      });
+      const params: Record<string, any> = { page: usersPage, limit: 20 };
+      if (usersRoleFilter) params.role = usersRoleFilter;
+      if (usersStatusFilter) params.status = usersStatusFilter;
+      if (usersSearch) params.search = usersSearch;
+
+      const response = await api.get(API_ENDPOINTS.admin.users, { params });
       if (response.data?.success) {
-        setUsers(response.data.data?.records || response.data.data || []);
-        setUsersTotal(response.data.data?.total || (response.data.data || []).length);
+        setUsers(response.data.data?.users || []);
+        setUsersTotal(response.data.data?.pagination?.total || 0);
       }
     } catch (err: any) {
       console.error('Failed to fetch user index:', err);
@@ -168,8 +166,8 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
         params: { page: auditPage, limit: 50 },
       });
       if (response.data?.success) {
-        setAuditLogs(response.data.data?.records || response.data.data || []);
-        setAuditTotal(response.data.data?.total || (response.data.data || []).length);
+        setAuditLogs(response.data.data?.logs || []);
+        setAuditTotal(response.data.data?.pagination?.total || 0);
       }
     } catch (err) {
       console.error('Failed to load audits:', err);
@@ -210,7 +208,7 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
           const res = await api.get(API_ENDPOINTS.admin.users, { params: { limit: 100 } });
           if (res.data?.success) {
             // Include verified and active users
-            const records = res.data.data?.records || res.data.data || [];
+            const records = res.data.data?.users || [];
             setUsersDropdown(records.filter((u: User) => u.status === 'approved'));
           }
         } catch (err) {
@@ -237,7 +235,7 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
         params: { search: target.fullName, limit: 10 },
       });
       if (res.data?.success) {
-        setUserCommHistory(res.data.data?.records || res.data.data || []);
+        setUserCommHistory(res.data.data?.commissions || []);
       }
     } catch (err) {
       setUserCommHistory([]);
@@ -466,7 +464,11 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
       {/* RENDER TAB 2: USERS BOARD */}
       {activeTab === 'users' && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          
+
+          <InviteSection userRole="admin" />
+
+          <div className="border-t border-slate-200" />
+
           {/* Filters controls bar */}
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <form onSubmit={handleUsersSearchSubmit} className="flex-1 flex gap-2">
@@ -499,7 +501,6 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
                 className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 outline-hidden"
               >
                 <option value="">All Roles</option>
-                <option value="admin">Admins</option>
                 <option value="manager">Managers</option>
                 <option value="agent">Agents</option>
                 <option value="subagent">Sub-agents</option>
@@ -566,7 +567,10 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
                           <Badge type={item.status} />
                         </td>
                         <td className="py-4 px-4">
-                          <span className="font-semibold text-slate-700">{item.parentName || 'None (Tenant)'}</span>
+                          {item.role === 'manager' || !item.parentName
+                            ? <span className="text-slate-300">—</span>
+                            : <span className="font-semibold text-slate-700">{item.parentName}</span>
+                          }
                         </td>
                         <td className="py-4 px-4 text-center font-mono font-medium text-slate-900">
                           {item.childrenCount}
@@ -1178,10 +1182,12 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
                     <span className="text-slate-400">Security role:</span>
                     <Badge type={selectedUser.role} />
                   </div>
-                  <div className="flex justify-between py-2 font-medium">
-                    <span className="text-slate-400">Direct Sponsor/Manager:</span>
-                    <span className="text-slate-800 font-bold">{selectedUser.parentName || 'None'}</span>
-                  </div>
+                  {selectedUser.role !== 'manager' && (
+                    <div className="flex justify-between py-2 font-medium">
+                      <span className="text-slate-400">Direct Sponsor/Manager:</span>
+                      <span className="text-slate-800 font-bold">{selectedUser.parentName || '—'}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1252,7 +1258,6 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
                 onChange={(e) => setEditRole(e.target.value as any)}
                 className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
               >
-                <option value="admin">Admin</option>
                 <option value="manager">Manager</option>
                 <option value="agent">Agent</option>
                 <option value="subagent">Sub-agent</option>

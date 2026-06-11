@@ -2,15 +2,19 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { body, param } = require('express-validator');
 const db = require('../database');
 const { authenticateToken, authorizeRoles } = require('../middleware/auth');
 const { handleValidationErrors } = require('../middleware/validate');
 const { saveIdPhoto } = require('../utils/uploadHandler');
-const { checkCapacity } = require('../utils/checkCapacity');
 
 const SALT_ROUNDS = 12;
 const JWT_EXPIRY = '8h';
+const INVITE_EXPIRY_DAYS = 7;
+
+const ROLE_MAP = { admin: 'manager', manager: 'agent', agent: 'subagent', subagent: 'subagent' };
+const CAPACITY_LIMITS = { admin: 10, manager: 5, agent: 10, subagent: 10 };
 
 function generateToken(user) {
   return jwt.sign(
@@ -44,6 +48,34 @@ function isAtLeast18(dobString) {
   const m = today.getMonth() - dob.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
   return age >= 18;
+}
+
+async function validateInviteToken(token) {
+  const result = await db.query(
+    `SELECT il.*, u.full_name AS creator_name, u.role AS creator_role
+     FROM invite_links il
+     JOIN users u ON u.id = il.created_by
+     WHERE il.token = $1`,
+    [token]
+  );
+
+  if (result.rows.length === 0) {
+    return { valid: false, reason: 'Invalid invite link.' };
+  }
+
+  const link = result.rows[0];
+
+  if (link.is_used) {
+    return { valid: false, reason: 'This invite link has already been used.' };
+  }
+  if (!link.is_active) {
+    return { valid: false, reason: 'This invite link has been deactivated.' };
+  }
+  if (new Date(link.expires_at) < new Date()) {
+    return { valid: false, reason: 'This invite link has expired. Ask your manager to generate a new one.' };
+  }
+
+  return { valid: true, link };
 }
 
 // POST /auth/signup — Admin registration
@@ -152,7 +184,7 @@ router.post(
   }
 );
 
-// POST /auth/register — Invite link registration
+// POST /auth/register — Token-based invite registration
 router.post(
   '/register',
   [
@@ -163,35 +195,25 @@ router.post(
       if (value !== req.body.password) throw new Error('Passwords do not match.');
       return true;
     }),
-    body('parentId').notEmpty().withMessage('Parent ID is required.').isUUID().withMessage('Invalid parent ID.'),
+    body('token').notEmpty().withMessage('Invite token is required.'),
     body('idPhoto').notEmpty().withMessage('ID photo is required.'),
   ],
   handleValidationErrors,
   async (req, res) => {
     try {
-      const { fullName, dob, password, parentId, idPhoto } = req.body;
+      const { fullName, dob, password, token, idPhoto } = req.body;
 
       if (!isAtLeast18(dob)) {
         return res.status(400).json({ success: false, code: 'AGE_RESTRICTION', message: 'You must be at least 18 years old.' });
       }
 
-      const parentResult = await db.query(
-        'SELECT id, full_name, role FROM users WHERE id = $1 AND is_deleted = false AND verification_status = $2',
-        [parentId, 'approved']
-      );
-      if (parentResult.rows.length === 0) {
-        return res.status(404).json({ success: false, code: 'PARENT_NOT_FOUND', message: 'Invite link is invalid or the inviter is not active.' });
+      const { valid, reason, link } = await validateInviteToken(token);
+      if (!valid) {
+        return res.status(400).json({ success: false, code: 'INVITE_INVALID', message: reason });
       }
 
-      const parent = parentResult.rows[0];
-
-      const ROLE_MAP = { admin: 'manager', manager: 'agent', agent: 'subagent', subagent: 'subagent' };
-      const childRole = ROLE_MAP[parent.role];
-
-      const capacity = await checkCapacity(parentId);
-      if (!capacity.allowed) {
-        return res.status(409).json({ success: false, code: 'CAPACITY_EXCEEDED', message: capacity.reason });
-      }
+      const parentId = link.created_by;
+      const childRole = link.intended_role;
 
       const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
       const photoUrl = await saveIdPhoto(idPhoto);
@@ -205,17 +227,28 @@ router.post(
 
       const newUser = result.rows[0];
 
+      // Mark invite as used
+      await db.query(
+        `UPDATE invite_links SET is_used = true, used_by = $1, used_at = NOW() WHERE token = $2`,
+        [newUser.id, token]
+      );
+
+      await db.query(
+        `INSERT INTO audit_logs (actor_id, action, target_id, metadata) VALUES ($1, 'INVITE_USED', $2, $3)`,
+        [newUser.id, newUser.id, JSON.stringify({ token, parent_id: parentId, role: childRole })]
+      );
+
       await db.query(
         `INSERT INTO audit_logs (actor_id, action, target_id, metadata) VALUES ($1, 'user_registered', $2, $3)`,
-        [parentId, newUser.id, JSON.stringify({ childRole, parentName: parent.full_name })]
+        [parentId, newUser.id, JSON.stringify({ childRole, parentName: link.creator_name })]
       );
 
       return res.status(201).json({
         success: true,
         data: {
           user_id: newUser.id,
-          message: `Registration submitted. ${parent.full_name} will review your ID.`,
-          parent_name: parent.full_name,
+          message: `Registration submitted. ${link.creator_name} will review your ID.`,
+          parent_name: link.creator_name,
         },
       });
     } catch (err) {
@@ -250,7 +283,7 @@ router.get('/me', authenticateToken, async (req, res) => {
   }
 });
 
-// GET /auth/parent-info/:parentId — Public
+// GET /auth/parent-info/:parentId — Public (kept for backwards compatibility)
 router.get(
   '/parent-info/:parentId',
   [param('parentId').isUUID().withMessage('Invalid parent ID.')],
@@ -366,5 +399,205 @@ router.patch(
     }
   }
 );
+
+// ─────────────────────────────────────────────
+// INVITE LINK ENDPOINTS
+// ─────────────────────────────────────────────
+
+// POST /auth/invite/generate — Generate a new invite link
+router.post('/invite/generate', authenticateToken, async (req, res) => {
+  try {
+    const creator = req.user;
+
+    if (creator.verification_status !== 'approved') {
+      return res.status(403).json({ success: false, code: 'NOT_APPROVED', message: 'Your account must be approved to generate invite links.' });
+    }
+
+    const intendedRole = ROLE_MAP[creator.role];
+    const max = CAPACITY_LIMITS[creator.role];
+
+    // Count current direct children
+    const countResult = await db.query(
+      'SELECT COUNT(*) FROM users WHERE parent_id = $1 AND is_deleted = false',
+      [creator.id]
+    );
+    const current = parseInt(countResult.rows[0].count, 10);
+
+    if (current >= max) {
+      return res.status(400).json({
+        success: false,
+        code: 'CAPACITY_REACHED',
+        message: `You have reached the maximum number of ${intendedRole}s. Current: ${current} / Max: ${max}`,
+        data: { current, max },
+      });
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+    const inviteUrl = `${process.env.FRONTEND_URL}/register?token=${token}`;
+
+    await db.query(
+      `INSERT INTO invite_links (token, created_by, intended_role, expires_at)
+       VALUES ($1, $2, $3, $4)`,
+      [token, creator.id, intendedRole, expiresAt]
+    );
+
+    await db.query(
+      `INSERT INTO audit_logs (actor_id, action, target_id, metadata) VALUES ($1, 'INVITE_GENERATED', $1, $2)`,
+      [creator.id, JSON.stringify({ intended_role: intendedRole, expires_at: expiresAt })]
+    );
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        token,
+        invite_url: inviteUrl,
+        intended_role: intendedRole,
+        expires_at: expiresAt.toISOString(),
+        capacity: { current, max },
+      },
+    });
+  } catch (err) {
+    console.error('Generate invite error:', err);
+    return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: 'Failed to generate invite link.' });
+  }
+});
+
+// GET /auth/invite/validate/:token — Public token validation
+router.get('/invite/validate/:token', async (req, res) => {
+  try {
+    const { valid, reason, link } = await validateInviteToken(req.params.token);
+
+    if (!valid) {
+      return res.status(400).json({ success: false, code: 'INVITE_INVALID', message: reason });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        token: link.token,
+        intended_role: link.intended_role,
+        creator: { full_name: link.creator_name, role: link.creator_role },
+        expires_at: link.expires_at,
+        is_valid: true,
+      },
+    });
+  } catch (err) {
+    console.error('Validate invite error:', err);
+    return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: 'Failed to validate invite link.' });
+  }
+});
+
+// GET /auth/invite/info/:token — Public, returns pre-fill info for Register page
+router.get('/invite/info/:token', async (req, res) => {
+  try {
+    const { valid, reason, link } = await validateInviteToken(req.params.token);
+
+    if (!valid) {
+      return res.json({
+        success: true,
+        data: { is_valid: false, reason },
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        token: link.token,
+        intended_role: link.intended_role,
+        parent_name: link.creator_name,
+        parent_role: link.creator_role,
+        expires_at: link.expires_at,
+        is_valid: true,
+      },
+    });
+  } catch (err) {
+    console.error('Invite info error:', err);
+    return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: 'Failed to fetch invite info.' });
+  }
+});
+
+// GET /auth/invite/my-invites — Protected, returns current user's invite links
+router.get('/invite/my-invites', authenticateToken, async (req, res) => {
+  try {
+    const frontendUrl = process.env.FRONTEND_URL;
+
+    const result = await db.query(
+      `SELECT il.id, il.token, il.intended_role, il.is_used, il.is_active,
+              il.expires_at, il.created_at, il.used_at,
+              ub.full_name AS used_by_name
+       FROM invite_links il
+       LEFT JOIN users ub ON ub.id = il.used_by
+       WHERE il.created_by = $1
+       ORDER BY il.created_at DESC`,
+      [req.user.id]
+    );
+
+    const now = new Date();
+    const invites = result.rows.map((row) => {
+      let status;
+      if (row.is_used) status = 'used';
+      else if (new Date(row.expires_at) < now) status = 'expired';
+      else if (!row.is_active) status = 'inactive';
+      else status = 'active';
+
+      return {
+        id: row.id,
+        token: row.token,
+        invite_url: `${frontendUrl}/register?token=${row.token}`,
+        intended_role: row.intended_role,
+        is_used: row.is_used,
+        is_active: row.is_active,
+        expires_at: row.expires_at,
+        created_at: row.created_at,
+        used_by_name: row.used_by_name || null,
+        used_at: row.used_at || null,
+        status,
+      };
+    });
+
+    return res.json({ success: true, data: { invites } });
+  } catch (err) {
+    console.error('My invites error:', err);
+    return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: 'Failed to fetch invite links.' });
+  }
+});
+
+// PATCH /auth/invite/deactivate/:token — Protected, creator or admin only
+router.patch('/invite/deactivate/:token', authenticateToken, async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    const result = await db.query(
+      'SELECT id, created_by, is_active FROM invite_links WHERE token = $1',
+      [token]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, code: 'NOT_FOUND', message: 'Invite link not found.' });
+    }
+
+    const link = result.rows[0];
+
+    if (req.user.role !== 'admin' && link.created_by !== req.user.id) {
+      return res.status(403).json({ success: false, code: 'FORBIDDEN', message: 'You can only deactivate your own invite links.' });
+    }
+
+    await db.query(
+      'UPDATE invite_links SET is_active = false WHERE token = $1',
+      [token]
+    );
+
+    await db.query(
+      `INSERT INTO audit_logs (actor_id, action, target_id, metadata) VALUES ($1, 'INVITE_DEACTIVATED', $1, $2)`,
+      [req.user.id, JSON.stringify({ token })]
+    );
+
+    return res.json({ success: true, data: { token, is_active: false } });
+  } catch (err) {
+    console.error('Deactivate invite error:', err);
+    return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: 'Failed to deactivate invite link.' });
+  }
+});
 
 module.exports = router;

@@ -74,6 +74,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       case 'subagent':
         return [
           { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+          { id: 'team', label: 'My Team', icon: Users },
           { id: 'transactions', label: 'My Transactions', icon: ArrowLeftRight },
           { id: 'verifications', label: 'Verifications', icon: CheckSquare },
         ];

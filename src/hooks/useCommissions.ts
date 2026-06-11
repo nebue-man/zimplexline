@@ -53,8 +53,8 @@ export function useCommissions() {
       const response = await api.get(endpoint, { params });
 
       if (response.data?.success) {
-        setData(response.data.data?.records || response.data.data || []);
-        setTotalCount(response.data.data?.total || (response.data.data || []).length);
+        setData(response.data.data?.commissions || []);
+        setTotalCount(response.data.data?.pagination?.total || response.data.data?.total || 0);
       }
     } catch (err: any) {
       console.error('Error fetching commissions:', err);

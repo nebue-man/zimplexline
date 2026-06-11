@@ -19,7 +19,7 @@ router.get(
   [
     query('page').optional().isInt({ min: 1 }),
     query('limit').optional().isInt({ min: 1, max: MAX_LIMIT }),
-    query('role').optional().isIn(['admin', 'manager', 'agent', 'subagent']),
+    query('role').optional().isIn(['manager', 'agent', 'subagent']),
     query('status').optional().isIn(['pending', 'approved', 'rejected']),
     query('search').optional().isString().trim(),
     query('include_deleted').optional().isIn(['true', 'false']),
@@ -33,7 +33,7 @@ router.get(
       const includeDeleted = req.query.include_deleted === 'true';
 
       const params = [];
-      let whereClause = includeDeleted ? 'WHERE 1=1' : 'WHERE u.is_deleted = false';
+      let whereClause = includeDeleted ? 'WHERE u.role != \'admin\'' : 'WHERE u.is_deleted = false AND u.role != \'admin\'';
       let paramIndex = 1;
 
       if (req.query.role) {
@@ -58,7 +58,8 @@ router.get(
 
       const dataResult = await db.query(
         `SELECT u.id, u.full_name AS "fullName", u.email, u.role, u.verification_status AS status,
-                u.parent_id AS "parentId", p.full_name AS "parentName",
+                u.parent_id AS "parentId",
+                CASE WHEN u.role = 'manager' THEN NULL ELSE p.full_name END AS "parentName",
                 u.created_at AS "joinedAt", u.is_deleted AS "isDeleted", u.reject_reason AS "rejectReason",
                 (SELECT COUNT(*) FROM users c WHERE c.parent_id = u.id AND c.is_deleted = false) AS "childrenCount"
          FROM users u
@@ -105,7 +106,8 @@ router.get(
       const result = await db.query(
         `SELECT u.id, u.full_name AS "fullName", u.email, u.date_of_birth AS dob,
                 u.role, u.verification_status AS status, u.parent_id AS "parentId",
-                p.full_name AS "parentName", u.id_photo_url AS "idPhoto",
+                CASE WHEN u.role = 'manager' THEN NULL ELSE p.full_name END AS "parentName",
+                u.id_photo_url AS "idPhoto",
                 u.reject_reason AS "rejectReason", u.created_at AS "joinedAt", u.is_deleted AS "isDeleted",
                 (SELECT COUNT(*) FROM users c WHERE c.parent_id = u.id AND c.is_deleted = false) AS "childrenCount"
          FROM users u
@@ -279,7 +281,7 @@ router.get(
       const limit = Math.min(parseInt(req.query.limit || DEFAULT_LIMIT, 10), MAX_LIMIT);
       const offset = (page - 1) * limit;
 
-      const { whereClause, params } = buildTransactionFilters(req.query, 'WHERE 1=1', []);
+      const { whereClause, params } = buildTransactionFilters(req.query, 'WHERE u.role != \'admin\'', []);
 
       const countResult = await db.query(
         `SELECT COUNT(*) FROM transactions t JOIN users u ON t.user_id = u.id ${whereClause}`,
@@ -403,7 +405,7 @@ router.get(
       const offset = (page - 1) * limit;
 
       const params = ['agent_locked'];
-      let whereClause = 'WHERE c.commission_type != $1';
+      let whereClause = 'WHERE c.commission_type != $1 AND b.role != \'admin\' AND s.role != \'admin\'';
       let paramIndex = 2;
 
       if (req.query.type) {

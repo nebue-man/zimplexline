@@ -281,7 +281,7 @@ async function getSystemStats(dbClient) {
   );
   const totalTxResult = await client.query(`SELECT COALESCE(SUM(amount), 0) AS total FROM transactions`);
   const roleCountResult = await client.query(
-    `SELECT role, COUNT(*) FROM users WHERE is_deleted = false GROUP BY role`
+    `SELECT role, COUNT(*) FROM users WHERE is_deleted = false AND role != 'admin' GROUP BY role`
   );
   const totalUsersByRole = {};
   for (const row of roleCountResult.rows) totalUsersByRole[row.role] = parseInt(row.count, 10);
@@ -291,11 +291,11 @@ async function getSystemStats(dbClient) {
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
   const thisMonthUsersResult = await client.query(
-    'SELECT COUNT(*) FROM users WHERE created_at >= $1 AND is_deleted = false',
+    `SELECT COUNT(*) FROM users WHERE created_at >= $1 AND is_deleted = false AND role != 'admin'`,
     [thisMonthStart.toISOString()]
   );
   const lastMonthUsersResult = await client.query(
-    'SELECT COUNT(*) FROM users WHERE created_at >= $1 AND created_at < $2 AND is_deleted = false',
+    `SELECT COUNT(*) FROM users WHERE created_at >= $1 AND created_at < $2 AND is_deleted = false AND role != 'admin'`,
     [lastMonthStart.toISOString(), thisMonthStart.toISOString()]
   );
   const thisMonthUsers = parseInt(thisMonthUsersResult.rows[0].count, 10);
@@ -306,7 +306,7 @@ async function getSystemStats(dbClient) {
     `SELECT u.id, u.full_name AS name, u.role, COALESCE(SUM(c.amount), 0) AS total_earned
      FROM users u
      LEFT JOIN commissions c ON c.beneficiary_id = u.id AND c.commission_type != 'agent_locked'
-     WHERE u.is_deleted = false
+     WHERE u.is_deleted = false AND u.role != 'admin'
      GROUP BY u.id, u.full_name, u.role
      ORDER BY total_earned DESC
      LIMIT 10`

@@ -10,6 +10,7 @@ import { Badge } from '../../components/Badge';
 import { Pagination } from '../../components/Pagination';
 import { Modal } from '../../components/Modal';
 import { Toast, ToastType } from '../../components/Toast';
+import { InviteSection } from '../../components/InviteSection';
 import { IDPhotoViewer } from '../../components/IDPhotoViewer';
 import { EarningsChart } from '../../components/EarningsChart';
 import { SubagentThresholdTable } from '../../components/SubagentThresholdTable';
@@ -276,7 +277,11 @@ export default function AgentDashboard({ activeTab, setActiveTab }: AgentDashboa
       {/* MY TEAM TAB */}
       {activeTab === 'team' && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          
+
+          <InviteSection userRole="agent" agentLocked={!isUnlocked} />
+
+          <div className="border-t border-slate-200" />
+
           <div className="flex flex-col gap-1">
             <h2 className="text-xl font-bold text-slate-950">My Sub-agent Network</h2>
             <p className="text-xs text-slate-500">
