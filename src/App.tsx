@@ -1,0 +1,46 @@
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import { ProtectedRoute } from './components/ProtectedRoute';
+import Login from './pages/Login';
+import Signup from './pages/Signup';
+import Register from './pages/Register';
+import Dashboard from './pages/dashboard/Dashboard';
+import VerifyDetail from './pages/VerifyDetail';
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* Public Routes */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/register" element={<Register />} />
+
+          {/* Secure Protected Hubs */}
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/verify/:userId"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'manager', 'agent']}>
+                <VerifyDetail />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Wildcard Auto Redirection */}
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+  );
+}
