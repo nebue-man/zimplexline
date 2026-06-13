@@ -41,7 +41,7 @@ export default function AgentDashboard({ activeTab, setActiveTab }: AgentDashboa
   const { user: currentUser } = useAuth();
   
   // Custom metadata and auto-refresh summary structures
-  const { data: metrics, loading: mLoading, refresh: refreshSummary } = useDashboard();
+  const { data: metrics, unlockStatus, subagentThresholds, loading: mLoading, refresh: refreshSummary } = useDashboard();
   
   // Recruitment & Invitations
   const { data: teamMembers, generateInviteLink, loading: tLoading, refresh: refreshTeam } = useTeam();
@@ -168,8 +168,7 @@ export default function AgentDashboard({ activeTab, setActiveTab }: AgentDashboa
 
   // Safe checks for capacity and unlocking calculations
   const currentVolume = metrics?.agentMonthlyDepositTotal || 0;
-  const isUnlocked = metrics?.agentIsUnlocked || false;
-  const progressPercent = Math.min(100, Math.floor((currentVolume / 100000) * 100));
+  const isUnlocked = unlockStatus?.isUnlocked ?? metrics?.agentIsUnlocked ?? false;
 
   return (
     <div className="space-y-6">
@@ -177,11 +176,7 @@ export default function AgentDashboard({ activeTab, setActiveTab }: AgentDashboa
       {toastMsg && <Toast message={toastMsg} type={toastType} onClose={() => setToastMsg('')} />}
 
       {/* REQUIRED AGENT UNLOCK PROGRESS OVERLAY BANNER */}
-      <AgentUnlockBanner
-        currentVolume={currentVolume}
-        isUnlocked={isUnlocked}
-        progressPercent={progressPercent}
-      />
+      <AgentUnlockBanner status={unlockStatus} />
 
       {/* OVERVIEW TAB */}
       {activeTab === 'overview' && (
@@ -259,7 +254,7 @@ export default function AgentDashboard({ activeTab, setActiveTab }: AgentDashboa
               <p className="text-xs text-slate-450 mt-1">Active triggers: subagents with &gt;= 20,000 LKR deposits unlock 3% commission, else 2.5%.</p>
             </div>
             
-            <SubagentThresholdTable subagents={teamMembers} />
+            <SubagentThresholdTable thresholds={subagentThresholds} isLocked={!isUnlocked} />
           </div>
 
           {/* 30 Day earnings timeline */}

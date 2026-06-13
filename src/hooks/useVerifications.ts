@@ -36,9 +36,10 @@ export function useVerifications() {
 
   const verifyUser = async (targetUserId: string, status: 'approved' | 'rejected', reason?: string) => {
     try {
+      const action = status === 'approved' ? 'approve' : 'reject';
       const response = await api.patch(API_ENDPOINTS.auth.verify(targetUserId), {
-        status,
-        rejectReason: reason,
+        action,
+        ...(reason ? { reason } : {}),
       });
 
       if (response.data?.success) {

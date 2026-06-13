@@ -14,7 +14,7 @@ function scheduleMontlyReset() {
     const prevMonth = resetMonth === 1 ? 12 : resetMonth - 1;
     const prevYear = resetMonth === 1 ? resetYear - 1 : resetYear;
 
-    const client = await db.pool.connect();
+    const client = await db.connect();
     try {
       await client.query('BEGIN');
 

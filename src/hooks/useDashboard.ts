@@ -55,7 +55,14 @@ export function useDashboard() {
         try {
           const unlockRes = await api.get(API_ENDPOINTS.dashboard.agentUnlockStatus);
           if (unlockRes.data?.success) {
-            setUnlockStatus(unlockRes.data.data);
+            const d = unlockRes.data.data;
+            setUnlockStatus({
+              isUnlocked: d.isUnlocked,
+              currentDeposits: d.totalOwnDeposits ?? d.currentDeposits ?? 0,
+              target: d.threshold ?? d.target ?? 10000,
+              remaining: d.remaining ?? 0,
+              unlockDate: d.unlockedAt ?? d.unlockDate,
+            });
           }
         } catch (unlockErr) {
           console.warn('Could not fetch agent unlock status:', unlockErr);
@@ -65,7 +72,20 @@ export function useDashboard() {
         try {
           const thresholdsRes = await api.get(API_ENDPOINTS.dashboard.subagentThresholds);
           if (thresholdsRes.data?.success) {
-            setSubagentThresholds(thresholdsRes.data.data);
+            const rows = thresholdsRes.data.data ?? [];
+            setSubagentThresholds(rows.map((s: any) => {
+              const monthly = s.totalDepositsThisMonth ?? s.monthlyDeposits ?? 0;
+              const target = s.threshold ?? s.target ?? 20000;
+              const upgraded = s.rateUpgraded ?? (s.status === 'high');
+              return {
+                name: s.name,
+                monthlyDeposits: monthly,
+                progress: Math.min(100, (monthly / target) * 100),
+                target,
+                rate: upgraded ? 3 : 2.5,
+                status: upgraded ? 'high' : 'standard',
+              };
+            }));
           }
         } catch (thresholdsErr) {
           console.warn('Could not fetch subagent thresholds:', thresholdsErr);

@@ -312,7 +312,6 @@ router.get(
             userRole: t.userRole,
             type: t.type,
             amount: parseFloat(t.amount),
-            notes: t.notes || undefined,
             date: t.date ? new Date(t.date).toISOString() : null,
             createdBy: t.createdBy || undefined,
             createdByName: t.createdByName || undefined,
@@ -335,15 +334,15 @@ router.post(
     body('userId').notEmpty().isUUID().withMessage('Valid userId is required.'),
     body('type').isIn(['deposit', 'withdrawal']).withMessage('type must be deposit or withdrawal.'),
     body('amount').isFloat({ min: 0.01 }).withMessage('amount must be a positive number.'),
-    body('notes').optional().isString().trim(),
+    body('date').optional().isISO8601().withMessage('date must be a valid ISO 8601 date.'),
   ],
   handleValidationErrors,
   async (req, res) => {
-    const client = await db.pool.connect();
+    const client = await db.connect();
     try {
       await client.query('BEGIN');
 
-      const { userId: targetUserId, type, amount, notes } = req.body;
+      const { userId: targetUserId, type, amount, date } = req.body;
 
       const targetResult = await client.query(
         'SELECT id, verification_status FROM users WHERE id = $1 AND is_deleted = false',
@@ -355,10 +354,10 @@ router.post(
       }
 
       const txResult = await client.query(
-        `INSERT INTO transactions (user_id, type, amount, notes, created_by, transaction_date)
-         VALUES ($1, $2, $3, $4, $5, NOW())
+        `INSERT INTO transactions (user_id, type, amount, recorded_by, transaction_date)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING id`,
-        [targetUserId, type, parseFloat(amount), notes || null, req.user.id]
+        [targetUserId, type, parseFloat(amount), req.user.id, date ? new Date(date) : new Date()]
       );
 
       const transactionId = txResult.rows[0].id;

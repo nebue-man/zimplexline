@@ -59,11 +59,11 @@ router.get(
 
         const dataResult = await db.query(
           `SELECT t.id, t.user_id AS "userId", u.full_name AS "userName", u.role AS "userRole",
-                  t.type, t.amount, t.notes, t.transaction_date AS date, t.created_by AS "createdBy",
-                  cb.full_name AS "createdByName"
+                  t.type, t.amount, t.transaction_date AS date, t.recorded_by AS "recordedBy",
+                  cb.full_name AS "recordedByName"
            FROM transactions t
            JOIN users u ON t.user_id = u.id
-           LEFT JOIN users cb ON cb.id = t.created_by
+           LEFT JOIN users cb ON cb.id = t.recorded_by
            ${wc}
            ORDER BY t.transaction_date DESC
            LIMIT $${fp.length + 1} OFFSET $${fp.length + 2}`,
@@ -99,11 +99,11 @@ router.get(
              SELECT u.id FROM users u INNER JOIN downline d ON u.parent_id = d.id WHERE u.is_deleted = false
            )
            SELECT t.id, t.user_id AS "userId", u.full_name AS "userName", u.role AS "userRole",
-                  t.type, t.amount, t.notes, t.transaction_date AS date, t.created_by AS "createdBy",
-                  cb.full_name AS "createdByName"
+                  t.type, t.amount, t.transaction_date AS date, t.recorded_by AS "recordedBy",
+                  cb.full_name AS "recordedByName"
            FROM transactions t
            JOIN users u ON t.user_id = u.id
-           LEFT JOIN users cb ON cb.id = t.created_by
+           LEFT JOIN users cb ON cb.id = t.recorded_by
            ${wc}
            ORDER BY t.transaction_date DESC
            LIMIT $${fp.length + 1} OFFSET $${fp.length + 2}`,
@@ -129,7 +129,7 @@ router.get(
 
       const dataResult = await db.query(
         `SELECT t.id, t.user_id AS "userId", u.full_name AS "userName", u.role AS "userRole",
-                t.type, t.amount, t.notes, t.transaction_date AS date
+                t.type, t.amount, t.transaction_date AS date
          FROM transactions t
          JOIN users u ON t.user_id = u.id
          ${wc}
@@ -160,15 +160,15 @@ router.post(
     body('userId').notEmpty().withMessage('userId is required.').isUUID().withMessage('Invalid userId.'),
     body('type').isIn(['deposit', 'withdrawal']).withMessage('type must be deposit or withdrawal.'),
     body('amount').isFloat({ min: 0.01 }).withMessage('amount must be a positive number.'),
-    body('notes').optional().isString().trim(),
+    body('date').optional().isISO8601().withMessage('date must be a valid ISO 8601 date.'),
   ],
   handleValidationErrors,
   async (req, res) => {
-    const client = await db.pool.connect();
+    const client = await db.connect();
     try {
       await client.query('BEGIN');
 
-      const { userId: targetUserId, type, amount, notes } = req.body;
+      const { userId: targetUserId, type, amount, date } = req.body;
       const recorderId = req.user.id;
       const recorderRole = req.user.role;
 
@@ -193,10 +193,10 @@ router.post(
       }
 
       const txResult = await client.query(
-        `INSERT INTO transactions (user_id, type, amount, notes, created_by, transaction_date)
-         VALUES ($1, $2, $3, $4, $5, NOW())
+        `INSERT INTO transactions (user_id, type, amount, recorded_by, transaction_date)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING id`,
-        [targetUserId, type, parseFloat(amount), notes || null, recorderId]
+        [targetUserId, type, parseFloat(amount), recorderId, date ? new Date(date) : new Date()]
       );
 
       const transactionId = txResult.rows[0].id;
@@ -231,11 +231,11 @@ router.get(
 
       const result = await db.query(
         `SELECT t.id, t.user_id AS "userId", u.full_name AS "userName", u.role AS "userRole",
-                t.type, t.amount, t.notes, t.transaction_date AS date, t.created_by AS "createdBy",
-                cb.full_name AS "createdByName"
+                t.type, t.amount, t.transaction_date AS date, t.recorded_by AS "recordedBy",
+                cb.full_name AS "recordedByName"
          FROM transactions t
          JOIN users u ON t.user_id = u.id
-         LEFT JOIN users cb ON cb.id = t.created_by
+         LEFT JOIN users cb ON cb.id = t.recorded_by
          WHERE t.id = $1`,
         [txId]
       );
@@ -303,10 +303,9 @@ function formatTransaction(t) {
     userRole: t.userRole,
     type: t.type,
     amount: parseFloat(t.amount),
-    notes: t.notes || undefined,
     date: t.date ? new Date(t.date).toISOString() : null,
-    createdBy: t.createdBy || undefined,
-    createdByName: t.createdByName || undefined,
+    recordedBy: t.recordedBy || undefined,
+    recordedByName: t.recordedByName || undefined,
   };
 }
 

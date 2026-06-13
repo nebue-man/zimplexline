@@ -33,3 +33,6 @@ Thumbs.db
 # Cache
 .cache/
 .parcel-cache/
+
+# Uploaded user files
+backend/uploads/
