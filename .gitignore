@@ -36,3 +36,4 @@ Thumbs.db
 
 # Uploaded user files
 backend/uploads/
+backend/.env
