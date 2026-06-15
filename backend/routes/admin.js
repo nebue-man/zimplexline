@@ -31,10 +31,18 @@ router.get(
       const limit = Math.min(parseInt(req.query.limit || DEFAULT_LIMIT, 10), MAX_LIMIT);
       const offset = (page - 1) * limit;
       const includeDeleted = req.query.include_deleted === 'true';
+      const adminId = req.user.id;
 
-      const params = [];
-      let whereClause = includeDeleted ? 'WHERE u.role != \'admin\'' : 'WHERE u.is_deleted = false AND u.role != \'admin\'';
-      let paramIndex = 1;
+      const cte = `WITH RECURSIVE my_hierarchy AS (
+        SELECT id FROM users WHERE parent_id = $1
+        UNION ALL
+        SELECT u.id FROM users u INNER JOIN my_hierarchy h ON u.parent_id = h.id
+      )`;
+      const params = [adminId];
+      let whereClause = includeDeleted
+        ? 'WHERE u.id IN (SELECT id FROM my_hierarchy)'
+        : 'WHERE u.is_deleted = false AND u.id IN (SELECT id FROM my_hierarchy)';
+      let paramIndex = 2;
 
       if (req.query.role) {
         whereClause += ` AND u.role = $${paramIndex++}`;
@@ -51,13 +59,14 @@ router.get(
       }
 
       const countResult = await db.query(
-        `SELECT COUNT(*) FROM users u ${whereClause}`,
+        `${cte} SELECT COUNT(*) FROM users u ${whereClause}`,
         params
       );
       const total = parseInt(countResult.rows[0].count, 10);
 
       const dataResult = await db.query(
-        `SELECT u.id, u.full_name AS "fullName", u.email, u.role, u.verification_status AS status,
+        `${cte}
+         SELECT u.id, u.full_name AS "fullName", u.email, u.role, u.verification_status AS status,
                 u.parent_id AS "parentId",
                 CASE WHEN u.role = 'manager' THEN NULL ELSE p.full_name END AS "parentName",
                 u.created_at AS "joinedAt", u.is_deleted AS "isDeleted", u.reject_reason AS "rejectReason",
@@ -95,6 +104,20 @@ router.get(
   }
 );
 
+const hierarchyCTE = `WITH RECURSIVE my_hierarchy AS (
+  SELECT id FROM users WHERE parent_id = $1
+  UNION ALL
+  SELECT u.id FROM users u INNER JOIN my_hierarchy h ON u.parent_id = h.id
+)`;
+
+async function inHierarchy(adminId, targetId) {
+  const r = await db.query(
+    `${hierarchyCTE} SELECT 1 FROM my_hierarchy WHERE id = $2`,
+    [adminId, targetId]
+  );
+  return r.rows.length > 0;
+}
+
 // GET /admin/users/:userId
 router.get(
   '/users/:userId',
@@ -103,6 +126,10 @@ router.get(
   handleValidationErrors,
   async (req, res) => {
     try {
+      if (!(await inHierarchy(req.user.id, req.params.userId))) {
+        return res.status(404).json({ success: false, code: 'NOT_FOUND', message: 'User not found.' });
+      }
+
       const result = await db.query(
         `SELECT u.id, u.full_name AS "fullName", u.email, u.date_of_birth AS dob,
                 u.role, u.verification_status AS status, u.parent_id AS "parentId",
@@ -162,11 +189,7 @@ router.patch(
       const { userId } = req.params;
       const { status, reason, role } = req.body;
 
-      const targetResult = await db.query(
-        'SELECT id FROM users WHERE id = $1',
-        [userId]
-      );
-      if (targetResult.rows.length === 0) {
+      if (!(await inHierarchy(req.user.id, userId))) {
         return res.status(404).json({ success: false, code: 'NOT_FOUND', message: 'User not found.' });
       }
 
@@ -233,6 +256,10 @@ router.delete(
         return res.status(400).json({ success: false, code: 'SELF_DELETE', message: 'You cannot delete your own account.' });
       }
 
+      if (!(await inHierarchy(req.user.id, userId))) {
+        return res.status(404).json({ success: false, code: 'NOT_FOUND', message: 'User not found.' });
+      }
+
       const targetResult = await db.query(
         'SELECT id, is_deleted FROM users WHERE id = $1',
         [userId]
@@ -281,16 +308,27 @@ router.get(
       const limit = Math.min(parseInt(req.query.limit || DEFAULT_LIMIT, 10), MAX_LIMIT);
       const offset = (page - 1) * limit;
 
-      const { whereClause, params } = buildTransactionFilters(req.query, 'WHERE u.role != \'admin\'', []);
+      const adminId = req.user.id;
+      const cte = `WITH RECURSIVE my_hierarchy AS (
+        SELECT id FROM users WHERE parent_id = $1
+        UNION ALL
+        SELECT u.id FROM users u INNER JOIN my_hierarchy h ON u.parent_id = h.id
+      )`;
+      const { whereClause, params } = buildTransactionFilters(
+        req.query,
+        'WHERE u.id IN (SELECT id FROM my_hierarchy)',
+        [adminId]
+      );
 
       const countResult = await db.query(
-        `SELECT COUNT(*) FROM transactions t JOIN users u ON t.user_id = u.id ${whereClause}`,
+        `${cte} SELECT COUNT(*) FROM transactions t JOIN users u ON t.user_id = u.id ${whereClause}`,
         params
       );
       const total = parseInt(countResult.rows[0].count, 10);
 
       const dataResult = await db.query(
-        `SELECT t.id, t.user_id AS "userId", u.full_name AS "userName", u.role AS "userRole",
+        `${cte}
+         SELECT t.id, t.user_id AS "userId", u.full_name AS "userName", u.role AS "userRole",
                 t.type, t.amount, t.transaction_date AS date,
                 t.recorded_by AS "createdBy", cb.full_name AS "createdByName"
          FROM transactions t
@@ -353,6 +391,15 @@ router.post(
         return res.status(404).json({ success: false, code: 'USER_NOT_FOUND', message: 'Target user not found.' });
       }
 
+      const hierarchyCheck = await client.query(
+        `${hierarchyCTE} SELECT 1 FROM my_hierarchy WHERE id = $2`,
+        [req.user.id, targetUserId]
+      );
+      if (hierarchyCheck.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ success: false, code: 'FORBIDDEN', message: 'Target user is not in your hierarchy.' });
+      }
+
       const txResult = await client.query(
         `INSERT INTO transactions (user_id, type, amount, recorded_by, transaction_date)
          VALUES ($1, $2, $3, $4, $5)
@@ -403,9 +450,15 @@ router.get(
       const limit = Math.min(parseInt(req.query.limit || DEFAULT_LIMIT, 10), MAX_LIMIT);
       const offset = (page - 1) * limit;
 
-      const params = ['agent_locked'];
-      let whereClause = 'WHERE c.commission_type != $1 AND b.role != \'admin\' AND s.role != \'admin\'';
-      let paramIndex = 2;
+      const adminId = req.user.id;
+      const cte = `WITH RECURSIVE my_hierarchy AS (
+        SELECT id FROM users WHERE parent_id = $1
+        UNION ALL
+        SELECT u.id FROM users u INNER JOIN my_hierarchy h ON u.parent_id = h.id
+      )`;
+      const params = [adminId, 'agent_locked'];
+      let whereClause = 'WHERE c.commission_type != $2 AND b.id IN (SELECT id FROM my_hierarchy)';
+      let paramIndex = 3;
 
       if (req.query.type) {
         whereClause += ` AND c.commission_type = $${paramIndex++}`;
@@ -424,11 +477,15 @@ router.get(
         params.push(req.query.date_to + 'T23:59:59.999Z');
       }
 
-      const countResult = await db.query(`SELECT COUNT(*) FROM commissions c ${whereClause}`, params);
+      const countResult = await db.query(
+        `${cte} SELECT COUNT(*) FROM commissions c JOIN users b ON b.id = c.beneficiary_id ${whereClause}`,
+        params
+      );
       const total = parseInt(countResult.rows[0].count, 10);
 
       const dataResult = await db.query(
-        `SELECT c.id, c.transaction_id AS "transactionId", c.beneficiary_id AS "beneficiaryId",
+        `${cte}
+         SELECT c.id, c.transaction_id AS "transactionId", c.beneficiary_id AS "beneficiaryId",
                 b.full_name AS "beneficiaryName", b.role AS "beneficiaryRole",
                 c.source_user_id AS "sourceUserId", s.full_name AS "sourceName",
                 c.commission_type AS type, c.percentage, c.amount, c.created_at AS date
@@ -485,9 +542,15 @@ router.get(
       const limit = Math.min(parseInt(req.query.limit || DEFAULT_LIMIT, 10), MAX_LIMIT);
       const offset = (page - 1) * limit;
 
-      const params = [];
-      let whereClause = 'WHERE 1=1';
-      let paramIndex = 1;
+      const adminId = req.user.id;
+      const cte = `WITH RECURSIVE my_hierarchy AS (
+        SELECT id FROM users WHERE parent_id = $1
+        UNION ALL
+        SELECT u.id FROM users u INNER JOIN my_hierarchy h ON u.parent_id = h.id
+      )`;
+      const params = [adminId];
+      let whereClause = 'WHERE (al.actor_id = $1 OR al.actor_id IN (SELECT id FROM my_hierarchy))';
+      let paramIndex = 2;
 
       if (req.query.actor_id) {
         whereClause += ` AND al.actor_id = $${paramIndex++}`;
@@ -506,11 +569,15 @@ router.get(
         params.push(req.query.date_to + 'T23:59:59.999Z');
       }
 
-      const countResult = await db.query(`SELECT COUNT(*) FROM audit_logs al ${whereClause}`, params);
+      const countResult = await db.query(
+        `${cte} SELECT COUNT(*) FROM audit_logs al ${whereClause}`,
+        params
+      );
       const total = parseInt(countResult.rows[0].count, 10);
 
       const dataResult = await db.query(
-        `SELECT al.id, al.actor_id AS "actorId", a.full_name AS "actorName",
+        `${cte}
+         SELECT al.id, al.actor_id AS "actorId", a.full_name AS "actorName",
                 al.action, al.target_id AS "targetId", al.metadata, al.created_at AS date
          FROM audit_logs al
          JOIN users a ON a.id = al.actor_id
@@ -544,7 +611,7 @@ router.get(
 // GET /admin/system-stats
 router.get('/system-stats', ...adminOnly, async (req, res) => {
   try {
-    const data = await getSystemStats();
+    const data = await getSystemStats(req.user.id);
     return res.json({ success: true, data });
   } catch (err) {
     console.error('Admin system stats error:', err);

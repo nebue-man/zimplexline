@@ -19,7 +19,7 @@ router.get('/summary', authenticateToken, async (req, res) => {
     let data;
 
     if (role === 'admin') {
-      data = await getAdminSummary();
+      data = await getAdminSummary(userId);
     } else if (role === 'manager') {
       data = await getManagerSummary(userId);
     } else if (role === 'agent') {
@@ -125,13 +125,21 @@ router.get('/pending-verifications', authenticateToken, async (req, res) => {
     let result;
     if (role === 'admin') {
       result = await db.query(
-        `SELECT u.id, u.full_name AS "fullName", u.role, u.id_photo_url AS "idPhoto",
+        `WITH RECURSIVE my_hierarchy AS (
+           SELECT id FROM users WHERE parent_id = $1
+           UNION ALL
+           SELECT u.id FROM users u INNER JOIN my_hierarchy h ON u.parent_id = h.id
+         )
+         SELECT u.id, u.full_name AS "fullName", u.role, u.id_photo_url AS "idPhoto",
                 u.date_of_birth AS dob, u.created_at AS "joinedAt",
                 p.full_name AS "parentName", u.parent_id AS "parentId"
          FROM users u
          LEFT JOIN users p ON p.id = u.parent_id
-         WHERE u.verification_status = 'pending' AND u.is_deleted = false
-         ORDER BY u.created_at ASC`
+         WHERE u.id IN (SELECT id FROM my_hierarchy)
+           AND u.verification_status = 'pending'
+           AND u.is_deleted = false
+         ORDER BY u.created_at ASC`,
+        [userId]
       );
     } else {
       result = await db.query(

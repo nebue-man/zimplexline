@@ -1,34 +1,51 @@
 const db = require('../database');
 
-async function getAdminSummary(dbClient) {
+async function getAdminSummary(adminId, dbClient) {
   const client = dbClient || db;
 
+  const cte = `WITH RECURSIVE my_hierarchy AS (
+    SELECT id FROM users WHERE parent_id = $1
+    UNION ALL
+    SELECT u.id FROM users u INNER JOIN my_hierarchy h ON u.parent_id = h.id
+  )`;
+
   const usersResult = await client.query(
-    `SELECT
+    `${cte}
+     SELECT
        COUNT(*) FILTER (WHERE role = 'manager') AS manager_count,
        COUNT(*) FILTER (WHERE role = 'agent') AS agent_count,
        COUNT(*) FILTER (WHERE role = 'subagent') AS subagent_count,
        COUNT(*) AS total_users
-     FROM users WHERE is_deleted = false`
+     FROM users WHERE id IN (SELECT id FROM my_hierarchy) AND is_deleted = false`,
+    [adminId]
   );
 
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
   const txResult = await client.query(
-    `SELECT COALESCE(SUM(amount), 0) AS volume
-     FROM transactions WHERE transaction_date >= $1`,
-    [startOfMonth]
+    `${cte}
+     SELECT COALESCE(SUM(t.amount), 0) AS volume
+     FROM transactions t
+     JOIN users u ON u.id = t.user_id
+     WHERE u.id IN (SELECT id FROM my_hierarchy) AND t.transaction_date >= $2`,
+    [adminId, startOfMonth]
   );
 
   const commResult = await client.query(
-    `SELECT COALESCE(SUM(amount), 0) AS total
-     FROM commissions WHERE created_at >= $1 AND commission_type != 'agent_locked'`,
-    [startOfMonth]
+    `${cte}
+     SELECT COALESCE(SUM(c.amount), 0) AS total
+     FROM commissions c
+     JOIN users b ON b.id = c.beneficiary_id
+     WHERE b.id IN (SELECT id FROM my_hierarchy) AND c.created_at >= $2 AND c.commission_type != 'agent_locked'`,
+    [adminId, startOfMonth]
   );
 
   const pendingResult = await client.query(
-    `SELECT COUNT(*) FROM users WHERE verification_status = 'pending' AND is_deleted = false`
+    `${cte}
+     SELECT COUNT(*) FROM users
+     WHERE id IN (SELECT id FROM my_hierarchy) AND verification_status = 'pending' AND is_deleted = false`,
+    [adminId]
   );
 
   const u = usersResult.rows[0];
@@ -273,15 +290,34 @@ async function getEarningsHistory(userId, role, period, groupBy, dbClient) {
   return { trend, recentTransactions: recentTx };
 }
 
-async function getSystemStats(dbClient) {
+async function getSystemStats(adminId, dbClient) {
   const client = dbClient || db;
 
+  const cte = `WITH RECURSIVE my_hierarchy AS (
+    SELECT id FROM users WHERE parent_id = $1
+    UNION ALL
+    SELECT u.id FROM users u INNER JOIN my_hierarchy h ON u.parent_id = h.id
+  )`;
+
   const totalCommResult = await client.query(
-    `SELECT COALESCE(SUM(amount), 0) AS total FROM commissions WHERE commission_type != 'agent_locked'`
+    `${cte}
+     SELECT COALESCE(SUM(c.amount), 0) AS total FROM commissions c
+     JOIN users b ON b.id = c.beneficiary_id
+     WHERE b.id IN (SELECT id FROM my_hierarchy) AND c.commission_type != 'agent_locked'`,
+    [adminId]
   );
-  const totalTxResult = await client.query(`SELECT COALESCE(SUM(amount), 0) AS total FROM transactions`);
+  const totalTxResult = await client.query(
+    `${cte}
+     SELECT COALESCE(SUM(t.amount), 0) AS total FROM transactions t
+     JOIN users u ON u.id = t.user_id
+     WHERE u.id IN (SELECT id FROM my_hierarchy)`,
+    [adminId]
+  );
   const roleCountResult = await client.query(
-    `SELECT role, COUNT(*) FROM users WHERE is_deleted = false AND role != 'admin' GROUP BY role`
+    `${cte}
+     SELECT role, COUNT(*) FROM users
+     WHERE id IN (SELECT id FROM my_hierarchy) AND is_deleted = false GROUP BY role`,
+    [adminId]
   );
   const totalUsersByRole = {};
   for (const row of roleCountResult.rows) totalUsersByRole[row.role] = parseInt(row.count, 10);
@@ -291,25 +327,31 @@ async function getSystemStats(dbClient) {
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
   const thisMonthUsersResult = await client.query(
-    `SELECT COUNT(*) FROM users WHERE created_at >= $1 AND is_deleted = false AND role != 'admin'`,
-    [thisMonthStart.toISOString()]
+    `${cte}
+     SELECT COUNT(*) FROM users
+     WHERE id IN (SELECT id FROM my_hierarchy) AND created_at >= $2 AND is_deleted = false`,
+    [adminId, thisMonthStart.toISOString()]
   );
   const lastMonthUsersResult = await client.query(
-    `SELECT COUNT(*) FROM users WHERE created_at >= $1 AND created_at < $2 AND is_deleted = false AND role != 'admin'`,
-    [lastMonthStart.toISOString(), thisMonthStart.toISOString()]
+    `${cte}
+     SELECT COUNT(*) FROM users
+     WHERE id IN (SELECT id FROM my_hierarchy) AND created_at >= $2 AND created_at < $3 AND is_deleted = false`,
+    [adminId, lastMonthStart.toISOString(), thisMonthStart.toISOString()]
   );
   const thisMonthUsers = parseInt(thisMonthUsersResult.rows[0].count, 10);
   const lastMonthUsers = parseInt(lastMonthUsersResult.rows[0].count, 10);
   const monthlyGrowthRate = lastMonthUsers > 0 ? ((thisMonthUsers - lastMonthUsers) / lastMonthUsers) * 100 : 0;
 
   const top10Result = await client.query(
-    `SELECT u.id, u.full_name AS name, u.role, COALESCE(SUM(c.amount), 0) AS total_earned
+    `${cte}
+     SELECT u.id, u.full_name AS name, u.role, COALESCE(SUM(c.amount), 0) AS total_earned
      FROM users u
      LEFT JOIN commissions c ON c.beneficiary_id = u.id AND c.commission_type != 'agent_locked'
-     WHERE u.is_deleted = false AND u.role != 'admin'
+     WHERE u.id IN (SELECT id FROM my_hierarchy) AND u.is_deleted = false
      GROUP BY u.id, u.full_name, u.role
      ORDER BY total_earned DESC
-     LIMIT 10`
+     LIMIT 10`,
+    [adminId]
   );
 
   const leaderboard = top10Result.rows.map((r) => ({
