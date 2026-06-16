@@ -155,11 +155,8 @@ export default function Signup() {
         <div className="absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none"></div>
 
         {/* Brand header logo */}
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white font-mono font-black text-xl shadow-lg">
-            ZP
-          </div>
-          <span className="text-xl font-bold tracking-tight">Zimplexline</span>
+        <div className="flex items-center">
+          <img src="/logo.jpeg" alt="Zimplexline" className="h-12 w-auto object-contain brightness-0 invert" />
         </div>
 
         {/* Feature listings */}

@@ -99,11 +99,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const renderSidebarContent = () => (
     <div className="flex h-full flex-col bg-white">
       {/* Brand area */}
-      <div className="p-6 flex items-center gap-2 border-b border-[#E2E8F0] shrink-0">
-        <div className="w-8 h-8 bg-[#0F172A] rounded-lg flex items-center justify-center">
-          <span className="text-white font-bold text-lg">Z+</span>
-        </div>
-        <h1 className="text-[#0F172A] font-bold text-xl tracking-tight">Zimplexline</h1>
+      <div className="p-4 flex items-center border-b border-[#E2E8F0] shrink-0">
+        <img src="/logo.jpeg" alt="Zimplexline" className="h-10 w-auto object-contain" />
       </div>
 
       {/* User profile section */}

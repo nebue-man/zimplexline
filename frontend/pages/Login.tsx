@@ -77,13 +77,8 @@ export default function Login() {
         
         {/* Brand Header */}
         <div className="text-center select-none">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-blue-600 text-white font-mono font-black text-2xl shadow-md">
-            ZP
-          </div>
-          <h2 className="mt-6 text-3xl font-extrabold tracking-tight text-slate-900">
-            Zimplexline
-          </h2>
-          <p className="mt-2 text-sm font-medium text-slate-500">
+          <img src="/logo.jpeg" alt="Zimplexline" className="mx-auto h-16 w-auto object-contain" />
+          <p className="mt-3 text-sm font-medium text-slate-500">
             Affiliate network management, simplified
           </p>
         </div>
