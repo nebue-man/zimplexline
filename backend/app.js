@@ -60,9 +60,11 @@ const loginLimiter = rateLimit({
 });
 app.use('/api/v1/auth/login', loginLimiter);
 
-// Health check — no auth, no rate limit
+// Health checks — no auth, no rate limit
+app.get('/', (req, res) => res.json({ status: 'ok' }));
+app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 app.get('/health', (req, res) => {
-  res.json({ success: true, data: { status: 'ok', timestamp: new Date().toISOString() } });
+  res.json({ status: 'ok', timestamp: new Date(), uptime: process.uptime() });
 });
 
 // Routes
