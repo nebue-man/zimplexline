@@ -750,14 +750,15 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
           {/* Transactions list Table */}
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[750px] table-auto border-collapse text-left text-sm text-slate-650">
+              <table className="w-full min-w-[850px] table-auto border-collapse text-left text-sm text-slate-650">
                 <thead>
                   <tr className="border-b border-slate-150 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-450">
                     <th className="py-3 px-6">Transaction ID</th>
                     <th className="py-3 px-4">Affiliate User</th>
-                    <th className="py-3 px-4">Role Role</th>
+                    <th className="py-3 px-4">Role</th>
                     <th className="py-3 px-4">Type</th>
                     <th className="py-3 px-4">Amount LKR</th>
+                    <th className="py-3 px-4">Bank Slip</th>
                     <th className="py-3 px-6">Timestamp Date</th>
                   </tr>
                 </thead>
@@ -765,12 +766,12 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
                   {txLoading ? (
                     [...Array(4)].map((_, i) => (
                       <tr key={i} className="animate-pulse">
-                        <td colSpan={6} className="py-5 px-6"><div className="h-4 bg-slate-50 rounded" /></td>
+                        <td colSpan={7} className="py-5 px-6"><div className="h-4 bg-slate-50 rounded" /></td>
                       </tr>
                     ))
                   ) : txList.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-12 text-center text-slate-450">
+                      <td colSpan={7} className="py-12 text-center text-slate-450">
                         No transactions found matching your criteria.
                       </td>
                     </tr>
@@ -791,6 +792,19 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
                         </td>
                         <td className="py-4 px-4 font-mono font-bold text-slate-900">
                           {formatLKR(tx.amount)}
+                        </td>
+                        <td className="py-4 px-4">
+                          {currentUser?.role === 'admin' && tx.bank_slip_url ? (
+                            <img
+                              src={tx.bank_slip_url}
+                              alt="Bank slip"
+                              style={{ width: '80px', height: '80px', objectFit: 'cover', cursor: 'zoom-in', borderRadius: '4px' }}
+                              onClick={() => window.open(tx.bank_slip_url, '_blank')}
+                              title="Click to open full size"
+                            />
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
                         </td>
                         <td className="py-4 px-6 font-mono text-xs text-slate-500">
                           {formatDate(tx.date, true)}
