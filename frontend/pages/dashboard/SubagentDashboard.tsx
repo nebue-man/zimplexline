@@ -341,11 +341,11 @@ export default function SubagentDashboard({ activeTab, setActiveTab }: SubagentD
                 </div>
               </div>
 
-              {user?.idPhoto && (
+              {user?.promo_screenshot_url && (
                 <div className="mt-6 pt-4 border-t">
-                  <span className="text-[10px] font-bold uppercase text-slate-450 block mb-2 leading-none">Active Document File:</span>
+                  <span className="text-[10px] font-bold uppercase text-slate-450 block mb-2 leading-none">Promo Code Screenshot:</span>
                   <div className="max-w-[130px]">
-                    <IDPhotoViewer photoUrl={user.idPhoto} altText="Active KYC documentation" isThumbnail={true} />
+                    <IDPhotoViewer photoUrl={user.promo_screenshot_url} altText="Promo Code Screenshot" isThumbnail={true} />
                   </div>
                 </div>
               )}

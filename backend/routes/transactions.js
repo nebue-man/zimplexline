@@ -168,7 +168,7 @@ router.post(
     try {
       await client.query('BEGIN');
 
-      const { userId: targetUserId, type, amount, date } = req.body;
+      const { userId: targetUserId, type, amount, date, withdrawal_details } = req.body;
       const recorderId = req.user.id;
       const recorderRole = req.user.role;
 
@@ -193,10 +193,10 @@ router.post(
       }
 
       const txResult = await client.query(
-        `INSERT INTO transactions (user_id, type, amount, recorded_by, transaction_date)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO transactions (user_id, type, amount, recorded_by, transaction_date, withdrawal_details)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING id`,
-        [targetUserId, type, parseFloat(amount), recorderId, date ? new Date(date) : new Date()]
+        [targetUserId, type, parseFloat(amount), recorderId, date ? new Date(date) : new Date(), withdrawal_details ? JSON.stringify(withdrawal_details) : null]
       );
 
       const transactionId = txResult.rows[0].id;

@@ -131,6 +131,7 @@ router.get('/pending-verifications', authenticateToken, async (req, res) => {
            SELECT u.id FROM users u INNER JOIN my_hierarchy h ON u.parent_id = h.id
          )
          SELECT u.id, u.full_name AS "fullName", u.role, u.id_photo_url AS "idPhoto",
+                u.promo_screenshot_url AS "promoScreenshotUrl",
                 u.date_of_birth AS dob, u.created_at AS "joinedAt",
                 p.full_name AS "parentName", u.parent_id AS "parentId"
          FROM users u
@@ -144,6 +145,7 @@ router.get('/pending-verifications', authenticateToken, async (req, res) => {
     } else {
       result = await db.query(
         `SELECT u.id, u.full_name AS "fullName", u.role, u.id_photo_url AS "idPhoto",
+                u.promo_screenshot_url AS "promoScreenshotUrl",
                 u.date_of_birth AS dob, u.created_at AS "joinedAt",
                 p.full_name AS "parentName", u.parent_id AS "parentId"
          FROM users u
@@ -158,7 +160,8 @@ router.get('/pending-verifications', authenticateToken, async (req, res) => {
       id: u.id,
       fullName: u.fullName,
       role: u.role,
-      idPhoto: u.idPhoto,
+      idPhoto: u.idPhoto || undefined,
+      promo_screenshot_url: u.promoScreenshotUrl || undefined,
       dob: u.dob ? new Date(u.dob).toISOString().split('T')[0] : null,
       joinedAt: u.joinedAt ? new Date(u.joinedAt).toISOString() : null,
       parentName: u.parentName || null,

@@ -35,8 +35,9 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash       VARCHAR NOT NULL,
   role                user_role NOT NULL,
   parent_id           UUID REFERENCES users(id),
-  id_photo_url        VARCHAR,
-  verification_status verification_status NOT NULL DEFAULT 'pending',
+  id_photo_url         VARCHAR,
+  promo_screenshot_url VARCHAR,
+  verification_status  verification_status NOT NULL DEFAULT 'pending',
   verified_by         UUID REFERENCES users(id),
   network_name        VARCHAR,
   reject_reason       VARCHAR,
@@ -58,8 +59,9 @@ CREATE TABLE IF NOT EXISTS transactions (
   type             transaction_type NOT NULL,
   amount           DECIMAL(15,2) NOT NULL CHECK (amount > 0),
   transaction_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  recorded_by      UUID NOT NULL REFERENCES users(id),
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  recorded_by        UUID NOT NULL REFERENCES users(id),
+  withdrawal_details JSONB,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);

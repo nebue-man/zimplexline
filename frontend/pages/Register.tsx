@@ -30,8 +30,8 @@ export default function Register() {
   const [dob, setDob] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [idPhoto, setIdPhoto] = useState<string | null>(null);
-  const [idPhotoName, setIdPhotoName] = useState('');
+  const [promoScreenshot, setPromoScreenshot] = useState<string | null>(null);
+  const [promoScreenshotName, setPromoScreenshotName] = useState('');
 
   const [dragActive, setDragActive] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -81,15 +81,15 @@ export default function Register() {
 
   const handleFileChange = (file: File) => {
     if (!file) return;
-    if (!['image/jpeg', 'image/png', 'application/pdf'].includes(file.type)) {
-      setFieldErrors(prev => ({ ...prev, idPhoto: 'Only JPEG, PNG, and PDF files are accepted.' }));
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setFieldErrors(prev => ({ ...prev, promoScreenshot: 'Only JPG, PNG, and WebP images are accepted.' }));
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
-      setIdPhoto(reader.result as string);
-      setIdPhotoName(file.name);
-      setFieldErrors(prev => { const c = { ...prev }; delete c.idPhoto; return c; });
+      setPromoScreenshot(reader.result as string);
+      setPromoScreenshotName(file.name);
+      setFieldErrors(prev => { const c = { ...prev }; delete c.promoScreenshot; return c; });
     };
     reader.readAsDataURL(file);
   };
@@ -115,7 +115,7 @@ export default function Register() {
     else if (!validateAge(dob)) errors.dob = 'You must be at least 18 years old to join Zimplexline.';
     if (password.length < 8) errors.password = 'Password must be at least 8 characters.';
     if (password !== confirmPassword) errors.confirmPassword = 'Passwords do not match.';
-    if (!idPhoto) errors.idPhoto = 'Verification ID photo is required.';
+    if (!promoScreenshot) errors.promoScreenshot = 'Please upload your promo code screenshot to continue.';
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -133,7 +133,7 @@ export default function Register() {
         password,
         confirmPassword,
         token,
-        idPhoto,
+        promoScreenshot,
       });
       if (response.data?.success) {
         setIsSuccess(true);
@@ -188,7 +188,7 @@ export default function Register() {
           <h2 className="mt-6 text-2xl font-bold text-slate-900">Registration Submitted</h2>
           <div className="mt-4 rounded-lg bg-slate-50 p-4 text-left border border-slate-200">
             <p className="text-sm text-slate-600 leading-relaxed">
-              Welcome to Zimplexline. Your ID documentation has been uploaded.{' '}
+              Welcome to Zimplexline. Your promo code screenshot has been uploaded.{' '}
               <span className="font-semibold text-slate-900">{inviteInfo?.parent_name || 'Your manager'}</span>{' '}
               has been notified to review and activate your account.
             </p>
@@ -308,31 +308,26 @@ export default function Register() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Verification Identity Photo</label>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Promo Code Screenshot</label>
+              <p className="mt-0.5 text-[11px] text-slate-400">Upload a screenshot showing your 1xBet registration with your promo code</p>
               <div
                 onDragEnter={handleDrag}
                 onDragOver={handleDrag}
                 onDragLeave={handleDrag}
                 onDrop={handleDrop}
                 className={`mt-1.5 flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-6 transition ${
-                  dragActive ? 'border-blue-500 bg-blue-50/20' : idPhoto ? 'border-emerald-300 bg-emerald-50/10' : 'border-slate-300 bg-slate-50 hover:bg-slate-100/60'
+                  dragActive ? 'border-blue-500 bg-blue-50/20' : promoScreenshot ? 'border-emerald-300 bg-emerald-50/10' : 'border-slate-300 bg-slate-50 hover:bg-slate-100/60'
                 }`}
               >
-                {idPhoto ? (
+                {promoScreenshot ? (
                   <div className="flex flex-col items-center gap-3">
-                    {idPhoto.startsWith('data:image') ? (
-                      <div className="h-24 w-36 overflow-hidden rounded-lg border border-slate-200">
-                        <img src={idPhoto} referrerPolicy="no-referrer" alt="ID Preview" className="h-full w-full object-cover" />
-                      </div>
-                    ) : (
-                      <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                        <ImageIcon className="h-6 w-6" />
-                      </div>
-                    )}
-                    <span className="text-xs text-emerald-800 font-semibold">{idPhotoName || 'File uploaded'}</span>
+                    <div className="h-24 w-36 overflow-hidden rounded-lg border border-slate-200">
+                      <img src={promoScreenshot} referrerPolicy="no-referrer" alt="Screenshot Preview" className="h-full w-full object-cover" />
+                    </div>
+                    <span className="text-xs text-emerald-800 font-semibold">{promoScreenshotName || 'File uploaded'}</span>
                     <button
                       type="button"
-                      onClick={() => { setIdPhoto(null); setIdPhotoName(''); }}
+                      onClick={() => { setPromoScreenshot(null); setPromoScreenshotName(''); }}
                       className="text-[10px] font-bold text-rose-500 hover:underline"
                     >
                       Change file
@@ -347,17 +342,17 @@ export default function Register() {
                         <span>browse</span>
                         <input
                           type="file"
-                          accept=".jpg,.jpeg,.png,.pdf"
+                          accept=".jpg,.jpeg,.png,.webp"
                           className="sr-only"
                           onChange={(e) => { if (e.target.files?.[0]) handleFileChange(e.target.files[0]); }}
                         />
                       </label>
                     </p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">JPG, PNG, PDF up to 5MB</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">JPG, PNG, WebP up to 5MB</p>
                   </div>
                 )}
               </div>
-              {fieldErrors.idPhoto && <p className="mt-1 text-xs text-rose-600">{fieldErrors.idPhoto}</p>}
+              {fieldErrors.promoScreenshot && <p className="mt-1 text-xs text-rose-600">{fieldErrors.promoScreenshot}</p>}
             </div>
 
             <button

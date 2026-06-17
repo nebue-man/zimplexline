@@ -135,6 +135,7 @@ router.get(
                 u.role, u.verification_status AS status, u.parent_id AS "parentId",
                 CASE WHEN u.role = 'manager' THEN NULL ELSE p.full_name END AS "parentName",
                 u.id_photo_url AS "idPhoto",
+                u.promo_screenshot_url AS "promo_screenshot_url",
                 u.reject_reason AS "rejectReason", u.created_at AS "joinedAt", u.is_deleted AS "isDeleted",
                 (SELECT COUNT(*) FROM users c WHERE c.parent_id = u.id AND c.is_deleted = false) AS "childrenCount"
          FROM users u
@@ -160,6 +161,7 @@ router.get(
           parentId: u.parentId || undefined,
           parentName: u.parentName || undefined,
           idPhoto: u.idPhoto || undefined,
+          promo_screenshot_url: u.promo_screenshot_url || undefined,
           rejectReason: u.rejectReason || undefined,
           joinedAt: u.joinedAt ? new Date(u.joinedAt).toISOString() : null,
           isDeleted: u.isDeleted,
@@ -380,7 +382,7 @@ router.post(
     try {
       await client.query('BEGIN');
 
-      const { userId: targetUserId, type, amount, date } = req.body;
+      const { userId: targetUserId, type, amount, date, withdrawal_details } = req.body;
 
       const targetResult = await client.query(
         'SELECT id, verification_status FROM users WHERE id = $1 AND is_deleted = false',
@@ -401,10 +403,10 @@ router.post(
       }
 
       const txResult = await client.query(
-        `INSERT INTO transactions (user_id, type, amount, recorded_by, transaction_date)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO transactions (user_id, type, amount, recorded_by, transaction_date, withdrawal_details)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING id`,
-        [targetUserId, type, parseFloat(amount), req.user.id, date ? new Date(date) : new Date()]
+        [targetUserId, type, parseFloat(amount), req.user.id, date ? new Date(date) : new Date(), withdrawal_details ? JSON.stringify(withdrawal_details) : null]
       );
 
       const transactionId = txResult.rows[0].id;

@@ -79,6 +79,12 @@ export function useTransactions() {
     type: 'deposit' | 'withdrawal';
     amount: number;
     date: string;
+    withdrawal_details?: {
+      withdrawal_code: string;
+      bank: string;
+      branch: string;
+      account_number: string;
+    };
   }) => {
     try {
       const endpoint = user?.role === 'admin' 

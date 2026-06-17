@@ -225,21 +225,21 @@ export default function VerifyDetail() {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: ID Photo Display (7 cols) */}
+        {/* RIGHT COLUMN: Promo Code Screenshot (7 cols) */}
         <div className="lg:col-span-7">
           <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm h-full flex flex-col justify-between">
             <div>
               <h2 className="text-base font-bold text-slate-950 border-b border-slate-100 pb-3">
-                ID Documentation
+                Promo Code Screenshot
               </h2>
               <p className="text-xs text-slate-400 mt-1">
-                Please inspect user's details against the uploaded document photograph. Click on the document image below to open full scale lightbox.
+                Verify that this screenshot clearly shows the user's 1xBet registration page with a valid promo code. Click the image to open full scale.
               </p>
             </div>
 
             <div className="mt-6 flex-1 flex items-center justify-center bg-slate-50 rounded-xl p-4 border border-slate-100">
               <div className="w-full">
-                <IDPhotoViewer photoUrl={targetUser.idPhoto || ''} altText={`${targetUser.fullName}'s ID Sheet`} />
+                <IDPhotoViewer photoUrl={targetUser.promo_screenshot_url || ''} altText={`${targetUser.fullName}'s Promo Screenshot`} />
               </div>
             </div>
           </div>

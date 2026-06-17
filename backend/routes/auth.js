@@ -37,6 +37,7 @@ function formatUser(u) {
     childrenCount: parseInt(u.children_count || 0, 10),
     joinedAt: u.created_at ? new Date(u.created_at).toISOString() : null,
     idPhoto: u.id_photo_url || undefined,
+    promo_screenshot_url: u.promo_screenshot_url || undefined,
     rejectReason: u.reject_reason || undefined,
   };
 }
@@ -196,12 +197,12 @@ router.post(
       return true;
     }),
     body('token').notEmpty().withMessage('Invite token is required.'),
-    body('idPhoto').notEmpty().withMessage('ID photo is required.'),
+    body('promoScreenshot').notEmpty().withMessage('Promo code screenshot is required.'),
   ],
   handleValidationErrors,
   async (req, res) => {
     try {
-      const { fullName, dob, password, token, idPhoto } = req.body;
+      const { fullName, dob, password, token, promoScreenshot } = req.body;
 
       if (!isAtLeast18(dob)) {
         return res.status(400).json({ success: false, code: 'AGE_RESTRICTION', message: 'You must be at least 18 years old.' });
@@ -216,13 +217,13 @@ router.post(
       const childRole = link.intended_role;
 
       const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-      const photoUrl = await saveIdPhoto(idPhoto);
+      const screenshotUrl = await saveIdPhoto(promoScreenshot);
 
       const result = await db.query(
-        `INSERT INTO users (full_name, date_of_birth, password_hash, role, parent_id, verification_status, id_photo_url)
+        `INSERT INTO users (full_name, date_of_birth, password_hash, role, parent_id, verification_status, promo_screenshot_url)
          VALUES ($1, $2, $3, $4, $5, 'pending', $6)
          RETURNING id, full_name, role`,
-        [fullName, dob, passwordHash, childRole, parentId, photoUrl]
+        [fullName, dob, passwordHash, childRole, parentId, screenshotUrl]
       );
 
       const newUser = result.rows[0];
@@ -247,7 +248,7 @@ router.post(
         success: true,
         data: {
           user_id: newUser.id,
-          message: `Registration submitted. ${link.creator_name} will review your ID.`,
+          message: `Registration submitted. ${link.creator_name} will review your details.`,
           parent_name: link.creator_name,
         },
       });
@@ -263,7 +264,7 @@ router.get('/me', authenticateToken, async (req, res) => {
   try {
     const result = await db.query(
       `SELECT u.id, u.full_name, u.email, u.date_of_birth, u.role, u.verification_status,
-              u.parent_id, u.id_photo_url, u.reject_reason, u.created_at,
+              u.parent_id, u.id_photo_url, u.promo_screenshot_url, u.reject_reason, u.created_at,
               p.full_name AS parent_name,
               (SELECT COUNT(*) FROM users c WHERE c.parent_id = u.id AND c.is_deleted = false) AS children_count
        FROM users u

@@ -14,6 +14,7 @@ export interface User {
   childrenCount: number;
   joinedAt: string;
   idPhoto?: string;
+  promo_screenshot_url?: string;
   rejectReason?: string;
 }
 
@@ -25,6 +26,12 @@ export interface Transaction {
   type: TransactionType;
   amount: number;
   date: string;
+  withdrawal_details?: {
+    withdrawal_code: string;
+    bank: string;
+    branch: string;
+    account_number: string;
+  };
 }
 
 export interface Commission {
@@ -76,7 +83,8 @@ export interface VerificationItem {
   role: UserRole;
   parentName?: string;
   submittedDate: string;
-  idPhoto: string;
+  idPhoto?: string;
+  promo_screenshot_url?: string;
 }
 
 export interface SubagentThreshold {

@@ -34,6 +34,7 @@ import {
   X,
   Search,
   SlidersHorizontal,
+  Info,
 } from 'lucide-react';
 import { User, Transaction, Commission, AuditLog } from '../../types';
 
@@ -125,6 +126,10 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
   const [txType, setTxType] = useState<'deposit' | 'withdrawal'>('deposit');
   const [txAmount, setTxAmount] = useState('');
   const [txDate, setTxDate] = useState(new Date().toISOString().slice(0, 10));
+  const [txWithdrawalCode, setTxWithdrawalCode] = useState('');
+  const [txWithdrawalBank, setTxWithdrawalBank] = useState('');
+  const [txWithdrawalBranch, setTxWithdrawalBranch] = useState('');
+  const [txWithdrawalAccount, setTxWithdrawalAccount] = useState('');
   const [txSubmitting, setTxSubmitting] = useState(false);
   const [usersDropdown, setUsersDropdown] = useState<User[]>([]);
 
@@ -300,6 +305,10 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
       showToast('Please select a user and provide positive numerical amount.', 'warning');
       return;
     }
+    if (txType === 'withdrawal' && (!txWithdrawalCode.trim() || !txWithdrawalBank.trim() || !txWithdrawalBranch.trim() || !txWithdrawalAccount.trim())) {
+      showToast('Please fill in all withdrawal details (code, bank, branch, account number).', 'warning');
+      return;
+    }
     setTxSubmitting(true);
 
     try {
@@ -308,14 +317,25 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
         type: txType,
         amount: Number(txAmount),
         date: txDate,
+        ...(txType === 'withdrawal' ? {
+          withdrawal_details: {
+            withdrawal_code: txWithdrawalCode,
+            bank: txWithdrawalBank,
+            branch: txWithdrawalBranch,
+            account_number: txWithdrawalAccount,
+          },
+        } : {}),
       });
 
       if (result.success) {
         showToast('Transaction recorded successfully. Commissions generated.', 'success');
         setIsTxModalOpen(false);
-        // Clear forms
         setTxTargetUserId('');
         setTxAmount('');
+        setTxWithdrawalCode('');
+        setTxWithdrawalBank('');
+        setTxWithdrawalBranch('');
+        setTxWithdrawalAccount('');
         refreshSummary();
         refreshTx();
       } else {
@@ -970,10 +990,10 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
                       </div>
                     </div>
 
-                    {/* Thumbnail ID Photo section */}
+                    {/* Promo Code Screenshot thumbnail */}
                     <div className="mt-4 flex flex-col">
-                      <span className="text-[10px] font-bold uppercase text-slate-400 mb-1.5 leading-none">Photo document</span>
-                      <IDPhotoViewer photoUrl={item.idPhoto} altText={`${item.fullName} ID Sheet`} isThumbnail={true} />
+                      <span className="text-[10px] font-bold uppercase text-slate-400 mb-1.5 leading-none">Promo Code Screenshot</span>
+                      <IDPhotoViewer photoUrl={item.promo_screenshot_url || ''} altText={`${item.fullName} Promo Screenshot`} isThumbnail={true} />
                     </div>
                   </div>
 
@@ -1204,12 +1224,12 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
                 </div>
               </div>
 
-              {/* ID verification Document thumbnail */}
-              {selectedUser.idPhoto && (
+              {/* Promo Code Screenshot */}
+              {selectedUser.promo_screenshot_url && (
                 <div>
-                  <h4 className="text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-2">ID Proof Document</h4>
+                  <h4 className="text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-2">Promo Code Screenshot</h4>
                   <div className="p-1 border bg-slate-50 rounded-xl">
-                    <IDPhotoViewer photoUrl={selectedUser.idPhoto} altText={`${selectedUser.fullName} ID`} />
+                    <IDPhotoViewer photoUrl={selectedUser.promo_screenshot_url} altText={`${selectedUser.fullName} Promo Screenshot`} />
                   </div>
                 </div>
               )}
@@ -1396,6 +1416,72 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
               </button>
             </div>
           </div>
+
+          {/* Conditional deposit info / withdrawal fields */}
+          {txType === 'deposit' ? (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-2">
+              <div className="flex items-center gap-2 text-blue-800">
+                <Info className="h-4 w-4 shrink-0" />
+                <span className="text-xs font-bold uppercase tracking-wide">Deposit Bank Details</span>
+              </div>
+              <div className="text-xs text-blue-900 space-y-1 pl-6">
+                <p><span className="font-semibold">Name:</span> G M K H Kumara</p>
+                <p><span className="font-semibold">Bank:</span> HNB</p>
+                <p><span className="font-semibold">Branch:</span> Balangoda</p>
+                <p><span className="font-semibold">Account Number:</span> 071010018705</p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs font-bold uppercase text-slate-400">Withdrawal Details</p>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1">Withdrawal Code</label>
+                <input
+                  type="text"
+                  required
+                  value={txWithdrawalCode}
+                  onChange={(e) => setTxWithdrawalCode(e.target.value)}
+                  placeholder="e.g. WD-29348"
+                  className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">Bank</label>
+                  <input
+                    type="text"
+                    required
+                    value={txWithdrawalBank}
+                    onChange={(e) => setTxWithdrawalBank(e.target.value)}
+                    placeholder="e.g. HNB"
+                    className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">Branch</label>
+                  <input
+                    type="text"
+                    required
+                    value={txWithdrawalBranch}
+                    onChange={(e) => setTxWithdrawalBranch(e.target.value)}
+                    placeholder="e.g. Colombo 03"
+                    className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1">Account Number</label>
+                <input
+                  type="text"
+                  required
+                  value={txWithdrawalAccount}
+                  onChange={(e) => setTxWithdrawalAccount(e.target.value)}
+                  placeholder="e.g. 071010018705"
+                  className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Amount field */}
           <div>
