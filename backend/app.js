@@ -16,6 +16,7 @@ const bankSlipsRouter = require('./routes/bankSlips');
 const { scheduleMontlyReset } = require('./cron/monthlyReset');
 
 const app = express();
+app.set('trust proxy', 1);
 
 // Security headers
 app.use(helmet());
