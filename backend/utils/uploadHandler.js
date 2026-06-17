@@ -5,31 +5,59 @@ const fs = require('fs');
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '..', 'uploads');
-    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
-  },
-});
+const useCloudinary = !!(
+  process.env.CLOUDINARY_CLOUD_NAME &&
+  process.env.CLOUDINARY_API_KEY &&
+  process.env.CLOUDINARY_API_SECRET
+);
+
+let cloudinary;
+if (useCloudinary) {
+  cloudinary = require('cloudinary').v2;
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+  });
+}
+
+let storage;
+if (useCloudinary) {
+  const { CloudinaryStorage } = require('multer-storage-cloudinary');
+  storage = new CloudinaryStorage({
+    cloudinary,
+    params: {
+      folder: 'zimplexline/uploads',
+      resource_type: 'auto',
+      allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
+    },
+  });
+} else {
+  storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      const uploadDir = path.join(__dirname, '..', 'uploads');
+      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+      cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
+    },
+  });
+}
 
 const fileFilter = (req, file, cb) => {
   if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Only JPEG, PNG, and PDF files are allowed.'), false);
+    cb(new Error('Only JPEG, PNG, WebP, and PDF files are allowed.'), false);
   }
 };
 
 const upload = multer({ storage, fileFilter, limits: { fileSize: MAX_FILE_SIZE } });
 
 async function saveIdPhoto(base64DataOrFile) {
-  if (process.env.CLOUDINARY_URL || process.env.CLOUDINARY_CLOUD_NAME) {
-    const cloudinary = require('cloudinary').v2;
+  if (useCloudinary) {
     const result = await cloudinary.uploader.upload(base64DataOrFile, {
       folder: 'zimplexline/id_photos',
       resource_type: 'auto',
@@ -42,7 +70,7 @@ async function saveIdPhoto(base64DataOrFile) {
     if (!matches || matches.length !== 3) throw new Error('Invalid base64 image data.');
 
     const mimeType = matches[1];
-    if (!ALLOWED_MIME_TYPES.includes(mimeType)) throw new Error('Only JPEG, PNG, and PDF files are allowed.');
+    if (!ALLOWED_MIME_TYPES.includes(mimeType)) throw new Error('Only JPEG, PNG, WebP, and PDF files are allowed.');
 
     const ext = mimeType === 'application/pdf' ? '.pdf' : mimeType === 'image/png' ? '.png' : mimeType === 'image/webp' ? '.webp' : '.jpg';
     const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
@@ -50,8 +78,7 @@ async function saveIdPhoto(base64DataOrFile) {
     if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
     const buffer = Buffer.from(matches[2], 'base64');
-    const filePath = path.join(uploadDir, filename);
-    fs.writeFileSync(filePath, buffer);
+    fs.writeFileSync(path.join(uploadDir, filename), buffer);
     return `/uploads/${filename}`;
   }
 
