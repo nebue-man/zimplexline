@@ -88,5 +88,8 @@ export const API_ENDPOINTS = {
     userTransactions: (userId: string) => `/admin/users/${userId}/transactions`,
     approveTransaction: (id: string) => `/admin/transactions/${id}/approve`,
     rejectTransaction: (id: string) => `/admin/transactions/${id}/reject`,
+    commissionRates: '/admin/commission-rates',
+    commissionRateByKey: (key: string) => `/admin/commission-rates/${key}`,
+    commissionRatesBulk: '/admin/commission-rates/bulk',
   },
 };

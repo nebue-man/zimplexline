@@ -128,6 +128,14 @@ export interface AuditLog {
   timestamp: string;
 }
 
+export interface CommissionRate {
+  id: string;
+  rate_key: string;
+  rate_value: number;
+  description: string;
+  updated_at: string;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   data: T;

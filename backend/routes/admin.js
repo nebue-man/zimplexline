@@ -811,4 +811,150 @@ router.patch(
   }
 );
 
+// GET /admin/commission-rates
+router.get('/commission-rates', ...adminOnly, async (req, res) => {
+  try {
+    const result = await db.query(
+      'SELECT id, rate_key, rate_value, description, updated_at FROM commission_rates ORDER BY rate_key'
+    );
+    return res.json({
+      success: true,
+      data: result.rows.map((r) => ({
+        id: r.id,
+        rate_key: r.rate_key,
+        rate_value: parseFloat(r.rate_value),
+        description: r.description || '',
+        updated_at: r.updated_at ? new Date(r.updated_at).toISOString() : null,
+      })),
+    });
+  } catch (err) {
+    console.error('Get commission rates error:', err);
+    return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: 'Failed to fetch commission rates.' });
+  }
+});
+
+const THRESHOLD_RATE_KEYS = new Set(['agent_unlock_threshold', 'subagent_monthly_threshold']);
+
+// PATCH /admin/commission-rates/bulk  ← must be registered BEFORE /:rate_key
+router.patch(
+  '/commission-rates/bulk',
+  ...adminOnly,
+  [body('rates').isArray({ min: 1 }).withMessage('rates must be a non-empty array.')],
+  handleValidationErrors,
+  async (req, res) => {
+    const { rates } = req.body;
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      const updatedRates = [];
+
+      for (const { rate_key, rate_value } of rates) {
+        if (typeof rate_value !== 'number' || isNaN(rate_value) || rate_value < 0) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ success: false, message: `Invalid rate_value for ${rate_key}.` });
+        }
+        const isThreshold = THRESHOLD_RATE_KEYS.has(rate_key);
+        if (!isThreshold && rate_value > 100) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ success: false, message: `Percentage rate for ${rate_key} must be between 0 and 100.` });
+        }
+        const savedValue = isThreshold ? rate_value : rate_value / 100;
+
+        const oldResult = await client.query('SELECT rate_value FROM commission_rates WHERE rate_key = $1', [rate_key]);
+        if (oldResult.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ success: false, message: `Rate key '${rate_key}' not found.` });
+        }
+        const oldValue = parseFloat(oldResult.rows[0].rate_value);
+
+        const updateResult = await client.query(
+          'UPDATE commission_rates SET rate_value = $1, updated_at = NOW() WHERE rate_key = $2 RETURNING id, rate_key, rate_value, description, updated_at',
+          [savedValue, rate_key]
+        );
+        updatedRates.push(updateResult.rows[0]);
+
+        await client.query(
+          `INSERT INTO audit_logs (actor_id, action, metadata) VALUES ($1, 'COMMISSION_RATE_UPDATED', $2)`,
+          [req.user.id, JSON.stringify({ rate_key, old_value: oldValue, new_value: savedValue })]
+        );
+      }
+
+      await client.query('COMMIT');
+      return res.json({
+        success: true,
+        data: updatedRates.map((r) => ({
+          id: r.id,
+          rate_key: r.rate_key,
+          rate_value: parseFloat(r.rate_value),
+          description: r.description || '',
+          updated_at: r.updated_at ? new Date(r.updated_at).toISOString() : null,
+        })),
+      });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      console.error('Bulk update commission rates error:', err);
+      return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: 'Failed to update rates.' });
+    } finally {
+      client.release();
+    }
+  }
+);
+
+// PATCH /admin/commission-rates/:rate_key
+router.patch(
+  '/commission-rates/:rate_key',
+  ...adminOnly,
+  [
+    param('rate_key').isString().notEmpty().withMessage('rate_key is required.'),
+    body('rate_value').isFloat().withMessage('rate_value must be a number.'),
+  ],
+  handleValidationErrors,
+  async (req, res) => {
+    const { rate_key } = req.params;
+    const { rate_value } = req.body;
+
+    if (rate_value < 0) {
+      return res.status(400).json({ success: false, message: 'rate_value cannot be negative.' });
+    }
+    const isThreshold = THRESHOLD_RATE_KEYS.has(rate_key);
+    if (!isThreshold && rate_value > 100) {
+      return res.status(400).json({ success: false, message: 'Percentage rate must be between 0 and 100.' });
+    }
+    const savedValue = isThreshold ? rate_value : rate_value / 100;
+
+    try {
+      const oldResult = await db.query('SELECT rate_value FROM commission_rates WHERE rate_key = $1', [rate_key]);
+      if (oldResult.rows.length === 0) {
+        return res.status(404).json({ success: false, message: `Rate key '${rate_key}' not found.` });
+      }
+      const oldValue = parseFloat(oldResult.rows[0].rate_value);
+
+      const updateResult = await db.query(
+        'UPDATE commission_rates SET rate_value = $1, updated_at = NOW() WHERE rate_key = $2 RETURNING id, rate_key, rate_value, description, updated_at',
+        [savedValue, rate_key]
+      );
+
+      await db.query(
+        `INSERT INTO audit_logs (actor_id, action, metadata) VALUES ($1, 'COMMISSION_RATE_UPDATED', $2)`,
+        [req.user.id, JSON.stringify({ rate_key, old_value: oldValue, new_value: savedValue })]
+      );
+
+      const r = updateResult.rows[0];
+      return res.json({
+        success: true,
+        data: {
+          id: r.id,
+          rate_key: r.rate_key,
+          rate_value: parseFloat(r.rate_value),
+          description: r.description || '',
+          updated_at: r.updated_at ? new Date(r.updated_at).toISOString() : null,
+        },
+      });
+    } catch (err) {
+      console.error('Update commission rate error:', err);
+      return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: 'Failed to update commission rate.' });
+    }
+  }
+);
+
 module.exports = router;

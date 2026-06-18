@@ -35,7 +35,49 @@ import {
   Info,
   Upload,
 } from 'lucide-react';
-import { User, Transaction, Commission, AuditLog } from '../../types';
+import { User, Transaction, Commission, AuditLog, CommissionRate } from '../../types';
+
+const THRESHOLD_RATE_KEYS = new Set(['agent_unlock_threshold', 'subagent_monthly_threshold']);
+
+const RATE_GROUPS = [
+  {
+    title: 'Manager Rates',
+    subtitle: 'Commissions earned by Managers',
+    badge: 'Manager',
+    badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    rows: [
+      { key: 'manager_own_deposit',               label: 'Own Deposit',               desc: 'Commission when Manager records own deposit',            placeholder: '3 (system default)' },
+      { key: 'manager_own_withdrawal',             label: 'Own Withdrawal',             desc: 'Commission when Manager records own withdrawal',         placeholder: '1 (system default)' },
+      { key: 'manager_direct_agent_deposit',       label: 'Direct Agent Deposit',       desc: 'Commission from direct agent deposit activity',         placeholder: '1 (system default)' },
+      { key: 'manager_direct_agent_withdrawal',    label: 'Direct Agent Withdrawal',    desc: 'Commission from direct agent withdrawal activity',      placeholder: '0.4 (system default)' },
+      { key: 'manager_deep_team_deposit',          label: 'Deep Team Deposit',          desc: 'Commission from deep team deposit activity',            placeholder: '0.3 (system default)' },
+      { key: 'manager_deep_team_withdrawal',       label: 'Deep Team Withdrawal',       desc: 'Commission from deep team withdrawal activity',         placeholder: '0.1 (system default)' },
+    ],
+  },
+  {
+    title: 'Agent Rates',
+    subtitle: 'Commissions earned by Agents',
+    badge: 'Agent',
+    badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
+    rows: [
+      { key: 'agent_direct_subagent_deposit_low',  label: 'Sub-agent Deposit (under 20k/month)',  desc: 'Rate when sub-agent monthly deposits are below 20,000 LKR',       placeholder: '2.5 (system default)' },
+      { key: 'agent_direct_subagent_deposit_high', label: 'Sub-agent Deposit (over 20k/month)',   desc: 'Rate when sub-agent monthly deposits reach 20,000 LKR or more',  placeholder: '3 (system default)' },
+      { key: 'agent_direct_subagent_withdrawal',   label: 'Sub-agent Withdrawal',                 desc: 'Commission on direct sub-agent withdrawal activity',             placeholder: '1 (system default)' },
+      { key: 'agent_deep_team_deposit',            label: 'Deep Team Deposit',                    desc: 'Commission from deeper sub-agent deposit activity',              placeholder: '0.3 (system default)' },
+      { key: 'agent_deep_team_withdrawal',         label: 'Deep Team Withdrawal',                 desc: 'Commission from deeper sub-agent withdrawal activity',           placeholder: '0.1 (system default)' },
+    ],
+  },
+  {
+    title: 'Thresholds',
+    subtitle: 'Monthly deposit unlock requirements',
+    badge: 'Threshold',
+    badgeClass: 'bg-blue-50 text-blue-700 border-blue-200',
+    rows: [
+      { key: 'agent_unlock_threshold',      label: 'Agent Unlock Threshold (LKR)',      desc: 'Min own monthly deposits for agent to earn sub-agent commissions', placeholder: '10000 (system default)' },
+      { key: 'subagent_monthly_threshold',  label: 'Sub-agent Monthly Threshold (LKR)', desc: 'Monthly volume at which sub-agent deposit rate upgrades to high tier', placeholder: '20000 (system default)' },
+    ],
+  },
+];
 
 interface AdminDashboardProps {
   activeTab: string;
@@ -132,6 +174,13 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
   const [txBankSlipName, setTxBankSlipName] = useState('');
   const [txBankSlipDrag, setTxBankSlipDrag] = useState(false);
 
+  // Commission Rate Settings
+  const [commRates, setCommRates] = useState<CommissionRate[]>([]);
+  const [commRatesLoading, setCommRatesLoading] = useState(false);
+  const [commRatesError, setCommRatesError] = useState<string | null>(null);
+  const [rateInputs, setRateInputs] = useState<Record<string, string>>({});
+  const [rateUpdating, setRateUpdating] = useState<Record<string, boolean>>({});
+
   // Audit Logs Tab
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -185,12 +234,27 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
     }
   };
 
+  const fetchCommRates = async () => {
+    setCommRatesLoading(true);
+    setCommRatesError(null);
+    try {
+      const res = await api.get(API_ENDPOINTS.admin.commissionRates);
+      if (res.data?.success) setCommRates(res.data.data);
+    } catch (err: any) {
+      setCommRatesError(err.response?.data?.message || 'Failed to load commission rates.');
+    } finally {
+      setCommRatesLoading(false);
+    }
+  };
+
   // Fetch leaderboard & user list dropdown on specific tab open
   useEffect(() => {
     if (activeTab === 'users') {
       fetchUsersList();
     } else if (activeTab === 'audit_log') {
       fetchAuditLogs();
+    } else if (activeTab === 'commissions') {
+      fetchCommRates();
     } else if (activeTab === 'overview') {
       const fetchLeaderboard = async () => {
         setLeaderboardLoading(true);
@@ -287,6 +351,40 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
     setTxBankSlipFile(file);
     setTxBankSlipName(file.name);
     setTxBankSlipPreview(file.type.startsWith('image/') ? URL.createObjectURL(file) : null);
+  };
+
+  const handleRateApprove = async (rateKey: string) => {
+    const inputVal = rateInputs[rateKey];
+    if (!inputVal || inputVal.trim() === '') {
+      showToast('Please enter a value to update.', 'warning');
+      return;
+    }
+    const numVal = parseFloat(inputVal);
+    if (isNaN(numVal) || numVal < 0) {
+      showToast('Please enter a valid positive number.', 'warning');
+      return;
+    }
+    if (!THRESHOLD_RATE_KEYS.has(rateKey) && numVal > 100) {
+      showToast('Percentage rate cannot exceed 100%.', 'warning');
+      return;
+    }
+    setRateUpdating((prev) => ({ ...prev, [rateKey]: true }));
+    try {
+      const res = await api.patch(API_ENDPOINTS.admin.commissionRateByKey(rateKey), { rate_value: numVal });
+      if (res.data?.success) {
+        setCommRates((prev) => prev.map((r) => (r.rate_key === rateKey ? res.data.data : r)));
+        setRateInputs((prev) => ({ ...prev, [rateKey]: '' }));
+        showToast('Rate updated successfully.', 'success');
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.message || 'Failed to update rate.', 'error');
+    } finally {
+      setRateUpdating((prev) => ({ ...prev, [rateKey]: false }));
+    }
+  };
+
+  const handleRateReset = (rateKey: string) => {
+    setRateInputs((prev) => ({ ...prev, [rateKey]: '' }));
   };
 
   const handleRecordTxSubmit = async (e: React.FormEvent) => {
@@ -841,6 +939,99 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
       {activeTab === 'commissions' && (
         <div className="space-y-6 animate-in fade-in duration-200">
           
+          {/* ── Commission Rate Settings ─────────────────────────── */}
+          <div>
+            <p className="text-xs text-slate-400 uppercase font-mono tracking-wider">Rate Configuration</p>
+            <h2 className="text-xl font-bold text-slate-950">Commission Rate Settings</h2>
+          </div>
+
+          {commRatesLoading ? (
+            <LoadingSpinner message="Loading commission rates..." />
+          ) : commRatesError ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-center">
+              <p className="text-sm text-rose-700 font-medium mb-3">{commRatesError}</p>
+              <button
+                type="button"
+                onClick={fetchCommRates}
+                className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+              >
+                Retry
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+              {RATE_GROUPS.map((group) => (
+                <div key={group.title} className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                  <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/60">
+                    <h3 className="text-sm font-bold text-slate-900">{group.title}</h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">{group.subtitle}</p>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {group.rows.map((row) => {
+                      const rateRecord = commRates.find((r) => r.rate_key === row.key);
+                      const rateVal = rateRecord ? parseFloat(String(rateRecord.rate_value)) : 0;
+                      const isThreshold = THRESHOLD_RATE_KEYS.has(row.key);
+                      const pct = rateVal * 100;
+                      const currentDisplay = isThreshold
+                        ? `LKR ${Number(rateVal).toLocaleString()}`
+                        : `${pct.toFixed(2).replace(/\.?0+$/, '')}%`;
+                      const anyUpdating = Object.values(rateUpdating).some(Boolean);
+                      return (
+                        <div key={row.key} className="p-4 space-y-2.5">
+                          <div className="flex items-start gap-2">
+                            <span className={`shrink-0 mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border ${group.badgeClass}`}>
+                              {group.badge}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-slate-800 leading-tight">{row.label}</p>
+                              <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">{row.desc}</p>
+                              <p className="text-[11px] font-medium text-slate-500 mt-1">
+                                {isThreshold ? 'Current threshold: ' : 'Current rate: '}
+                                <span className="font-bold text-emerald-700">{currentDisplay}</span>
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max={isThreshold ? undefined : '100'}
+                              placeholder={row.placeholder}
+                              value={rateInputs[row.key] || ''}
+                              onChange={(e) => setRateInputs((prev) => ({ ...prev, [row.key]: e.target.value }))}
+                              className="flex-1 min-w-0 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 outline-none focus:border-blue-500 placeholder:text-slate-300"
+                            />
+                            <span className="text-[11px] font-semibold text-slate-500 shrink-0">{isThreshold ? 'LKR' : '%'}</span>
+                            <button
+                              type="button"
+                              disabled={anyUpdating}
+                              onClick={() => handleRateApprove(row.key)}
+                              className="shrink-0 rounded-lg bg-blue-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {rateUpdating[row.key] ? '…' : 'Approve'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRateReset(row.key)}
+                              className="shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-50"
+                            >
+                              Reset
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ── Divider ────────────────────────────────────────────── */}
+          <div className="border-t-2 border-slate-100" />
+
+          {/* ── Commission History (unchanged) ─────────────────────── */}
           <div>
             <p className="text-xs text-slate-400 uppercase font-mono tracking-wider">Ledger Accounts</p>
             <h2 className="text-xl font-bold text-slate-950">Multi-level Commissions Breakdown</h2>
