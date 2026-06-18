@@ -333,7 +333,8 @@ router.get(
          SELECT t.id, t.user_id AS "userId", u.full_name AS "userName", u.role AS "userRole",
                 t.type, t.amount, t.transaction_date AS date,
                 t.recorded_by AS "createdBy", cb.full_name AS "createdByName",
-                t.player_id AS "player_id", t.bank_slip_url AS "bank_slip_url"
+                t.player_id AS "player_id", t.bank_slip_url AS "bank_slip_url",
+                t.transaction_status AS "transaction_status"
          FROM transactions t
          JOIN users u ON t.user_id = u.id
          LEFT JOIN users cb ON cb.id = t.recorded_by
@@ -358,6 +359,7 @@ router.get(
             createdByName: t.createdByName || undefined,
             player_id: t.player_id || undefined,
             bank_slip_url: t.bank_slip_url || undefined,
+            transaction_status: t.transaction_status || 'approved',
           })),
           pagination: { page, limit, total, pages: Math.ceil(total / limit) },
         },
@@ -623,5 +625,190 @@ router.get('/system-stats', ...adminOnly, async (req, res) => {
     return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: 'Failed to fetch system stats.' });
   }
 });
+
+// GET /admin/users/:userId/transactions
+router.get(
+  '/users/:userId/transactions',
+  ...adminOnly,
+  [
+    param('userId').isUUID().withMessage('Invalid user ID.'),
+    query('page').optional().isInt({ min: 1 }),
+    query('limit').optional().isInt({ min: 1, max: 100 }),
+  ],
+  handleValidationErrors,
+  async (req, res) => {
+    try {
+      if (!(await inHierarchy(req.user.id, req.params.userId))) {
+        return res.status(404).json({ success: false, code: 'NOT_FOUND', message: 'User not found.' });
+      }
+      const page = parseInt(req.query.page || 1, 10);
+      const limit = Math.min(parseInt(req.query.limit || 20, 10), 100);
+      const offset = (page - 1) * limit;
+
+      // Get user info
+      const userResult = await db.query(
+        'SELECT id, full_name, role, created_at FROM users WHERE id = $1',
+        [req.params.userId]
+      );
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ success: false, code: 'NOT_FOUND', message: 'User not found.' });
+      }
+      const userInfo = userResult.rows[0];
+
+      const countResult = await db.query(
+        'SELECT COUNT(*) FROM transactions WHERE user_id = $1',
+        [req.params.userId]
+      );
+      const total = parseInt(countResult.rows[0].count, 10);
+
+      const txResult = await db.query(
+        `SELECT id, type, amount, player_id, bank_slip_url, withdrawal_details,
+                transaction_status, transaction_date, created_at
+         FROM transactions WHERE user_id = $1
+         ORDER BY created_at DESC
+         LIMIT $2 OFFSET $3`,
+        [req.params.userId, limit, offset]
+      );
+
+      // Batch-fetch commissions for all transactions
+      const txIds = txResult.rows.map((t) => t.id);
+      let commissionsMap = {};
+      if (txIds.length > 0) {
+        const commResult = await db.query(
+          `SELECT c.id, c.transaction_id, c.percentage, c.amount, c.commission_type,
+                  c.commission_status, u.full_name AS beneficiary_name, u.role AS beneficiary_role
+           FROM commissions c
+           JOIN users u ON u.id = c.beneficiary_id
+           WHERE c.transaction_id = ANY($1) AND c.commission_type != 'agent_locked'
+           ORDER BY c.created_at ASC`,
+          [txIds]
+        );
+        for (const c of commResult.rows) {
+          if (!commissionsMap[c.transaction_id]) commissionsMap[c.transaction_id] = [];
+          commissionsMap[c.transaction_id].push({
+            id: c.id,
+            beneficiary: { full_name: c.beneficiary_name, role: c.beneficiary_role },
+            percentage: parseFloat(c.percentage),
+            amount: parseFloat(c.amount),
+            commission_type: c.commission_type,
+            commission_status: c.commission_status || 'approved',
+          });
+        }
+      }
+
+      const transactions = txResult.rows.map((t) => ({
+        id: t.id,
+        type: t.type,
+        amount: parseFloat(t.amount),
+        player_id: t.player_id || undefined,
+        bank_slip_url: t.bank_slip_url || undefined,
+        withdrawal_details: t.withdrawal_details || undefined,
+        transaction_status: t.transaction_status || 'pending',
+        transaction_date: t.transaction_date ? new Date(t.transaction_date).toISOString() : null,
+        created_at: t.created_at ? new Date(t.created_at).toISOString() : null,
+        commissions: commissionsMap[t.id] || [],
+      }));
+
+      return res.json({
+        success: true,
+        data: {
+          user: {
+            id: userInfo.id,
+            fullName: userInfo.full_name,
+            role: userInfo.role,
+            joinedAt: userInfo.created_at ? new Date(userInfo.created_at).toISOString() : null,
+          },
+          transactions,
+          pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+        },
+      });
+    } catch (err) {
+      console.error('Admin user transactions error:', err);
+      return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: 'Failed to fetch user transactions.' });
+    }
+  }
+);
+
+// PATCH /admin/transactions/:id/approve
+router.patch(
+  '/transactions/:id/approve',
+  ...adminOnly,
+  [param('id').isUUID().withMessage('Invalid transaction ID.')],
+  handleValidationErrors,
+  async (req, res) => {
+    try {
+      // Verify transaction exists and belongs to hierarchy
+      const txResult = await db.query(
+        'SELECT id, user_id, transaction_status FROM transactions WHERE id = $1',
+        [req.params.id]
+      );
+      if (txResult.rows.length === 0) {
+        return res.status(404).json({ success: false, code: 'NOT_FOUND', message: 'Transaction not found.' });
+      }
+      const tx = txResult.rows[0];
+      if (!(await inHierarchy(req.user.id, tx.user_id))) {
+        return res.status(403).json({ success: false, code: 'FORBIDDEN', message: 'Access denied.' });
+      }
+
+      await db.query(
+        `UPDATE transactions SET transaction_status = 'approved' WHERE id = $1`,
+        [req.params.id]
+      );
+      await db.query(
+        `UPDATE commissions SET commission_status = 'approved' WHERE transaction_id = $1`,
+        [req.params.id]
+      );
+      await db.query(
+        `UPDATE notifications SET is_read = true WHERE transaction_id = $1`,
+        [req.params.id]
+      );
+
+      return res.json({ success: true, data: { transactionId: req.params.id, transaction_status: 'approved', message: 'Transaction approved.' } });
+    } catch (err) {
+      console.error('Approve transaction error:', err);
+      return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: 'Failed to approve transaction.' });
+    }
+  }
+);
+
+// PATCH /admin/transactions/:id/reject
+router.patch(
+  '/transactions/:id/reject',
+  ...adminOnly,
+  [
+    param('id').isUUID().withMessage('Invalid transaction ID.'),
+    body('reason').optional().isString().trim(),
+  ],
+  handleValidationErrors,
+  async (req, res) => {
+    try {
+      const txResult = await db.query(
+        'SELECT id, user_id, transaction_status FROM transactions WHERE id = $1',
+        [req.params.id]
+      );
+      if (txResult.rows.length === 0) {
+        return res.status(404).json({ success: false, code: 'NOT_FOUND', message: 'Transaction not found.' });
+      }
+      const tx = txResult.rows[0];
+      if (!(await inHierarchy(req.user.id, tx.user_id))) {
+        return res.status(403).json({ success: false, code: 'FORBIDDEN', message: 'Access denied.' });
+      }
+
+      await db.query(
+        `UPDATE transactions SET transaction_status = 'rejected' WHERE id = $1`,
+        [req.params.id]
+      );
+      await db.query(
+        `UPDATE commissions SET commission_status = 'rejected' WHERE transaction_id = $1`,
+        [req.params.id]
+      );
+
+      return res.json({ success: true, data: { transactionId: req.params.id, transaction_status: 'rejected', message: 'Transaction rejected.' } });
+    } catch (err) {
+      console.error('Reject transaction error:', err);
+      return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: 'Failed to reject transaction.' });
+    }
+  }
+);
 
 module.exports = router;

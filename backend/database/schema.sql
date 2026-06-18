@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   withdrawal_details JSONB,
   player_id          VARCHAR,
   bank_slip_url      VARCHAR,
+  transaction_status VARCHAR DEFAULT 'approved' CHECK (transaction_status IN ('pending','approved','rejected')),
   created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -79,12 +80,29 @@ CREATE TABLE IF NOT EXISTS commissions (
   percentage      DECIMAL(5,4) NOT NULL,
   amount          DECIMAL(15,2) NOT NULL,
   commission_type commission_type NOT NULL,
+  commission_status VARCHAR DEFAULT 'approved' CHECK (commission_status IN ('pending','approved','rejected')),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_commissions_beneficiary_id ON commissions(beneficiary_id);
 CREATE INDEX IF NOT EXISTS idx_commissions_source_user_id ON commissions(source_user_id);
 CREATE INDEX IF NOT EXISTS idx_commissions_transaction_id ON commissions(transaction_id);
+
+-- Table: notifications
+CREATE TABLE IF NOT EXISTS notifications (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  recipient_id   UUID REFERENCES users(id) NOT NULL,
+  sender_id      UUID REFERENCES users(id) NOT NULL,
+  transaction_id UUID REFERENCES transactions(id),
+  type           VARCHAR NOT NULL,
+  title          VARCHAR NOT NULL,
+  message        TEXT NOT NULL,
+  is_read        BOOLEAN DEFAULT false,
+  created_at     TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_recipient
+  ON notifications(recipient_id, is_read);
 
 -- Table: monthly_agent_unlock
 CREATE TABLE IF NOT EXISTS monthly_agent_unlock (

@@ -548,7 +548,7 @@ export default function ManagerDashboard({ activeTab, setActiveTab }: ManagerDas
           {/* Scoped list */}
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px] table-auto border-collapse text-left text-sm text-slate-650">
+              <table className="w-full min-w-[800px] table-auto border-collapse text-left text-sm text-slate-650">
                 <thead>
                   <tr className="border-b bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-450">
                     <th className="py-3 px-6">Transaction ID</th>
@@ -557,18 +557,19 @@ export default function ManagerDashboard({ activeTab, setActiveTab }: ManagerDas
                     <th className="py-3 px-4">Type</th>
                     <th className="py-3 px-4">Amount</th>
                     <th className="py-3 px-6">Date</th>
+                    <th className="py-3 px-4">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {txLoading ? (
                     [...Array(4)].map((_, i) => (
                       <tr key={i} className="animate-pulse">
-                        <td colSpan={6} className="py-5 px-6"><div className="h-4 bg-slate-50 rounded" /></td>
+                        <td colSpan={7} className="py-5 px-6"><div className="h-4 bg-slate-50 rounded" /></td>
                       </tr>
                     ))
                   ) : txList.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-12 text-center text-slate-400 font-mono italic">
+                      <td colSpan={7} className="py-12 text-center text-slate-400 font-mono italic">
                         No downline transactions recorded.
                       </td>
                     </tr>
@@ -581,6 +582,15 @@ export default function ManagerDashboard({ activeTab, setActiveTab }: ManagerDas
                         <td className="py-4 px-4"><Badge type={tx.type} /></td>
                         <td className="py-4 px-4 font-mono font-bold text-slate-900">{formatLKR(tx.amount)}</td>
                         <td className="py-4 px-6 font-mono text-slate-500 text-xs">{formatDate(tx.date, true)}</td>
+                        <td className="py-4 px-4">
+                          {tx.transaction_status === 'approved' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">Approved</span>
+                          ) : tx.transaction_status === 'rejected' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-red-50 text-red-700 border border-red-200">Rejected</span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200">Pending</span>
+                          )}
+                        </td>
                       </tr>
                     ))
                   )}

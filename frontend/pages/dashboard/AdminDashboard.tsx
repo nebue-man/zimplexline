@@ -750,7 +750,7 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
           {/* Transactions list Table */}
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[850px] table-auto border-collapse text-left text-sm text-slate-650">
+              <table className="w-full min-w-[950px] table-auto border-collapse text-left text-sm text-slate-650">
                 <thead>
                   <tr className="border-b border-slate-150 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-450">
                     <th className="py-3 px-6">Transaction ID</th>
@@ -760,18 +760,19 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
                     <th className="py-3 px-4">Amount LKR</th>
                     <th className="py-3 px-4">Bank Slip</th>
                     <th className="py-3 px-6">Timestamp Date</th>
+                    <th className="py-3 px-4">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {txLoading ? (
                     [...Array(4)].map((_, i) => (
                       <tr key={i} className="animate-pulse">
-                        <td colSpan={7} className="py-5 px-6"><div className="h-4 bg-slate-50 rounded" /></td>
+                        <td colSpan={8} className="py-5 px-6"><div className="h-4 bg-slate-50 rounded" /></td>
                       </tr>
                     ))
                   ) : txList.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-12 text-center text-slate-450">
+                      <td colSpan={8} className="py-12 text-center text-slate-450">
                         No transactions found matching your criteria.
                       </td>
                     </tr>
@@ -782,7 +783,12 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
                           {tx.id}
                         </td>
                         <td className="py-4 px-4">
-                          <span className="font-semibold text-slate-800">{tx.userName}</span>
+                          <button
+                            onClick={() => navigate(`/admin/users/${tx.userId}/transactions`)}
+                            className="font-semibold text-blue-600 hover:underline text-left"
+                          >
+                            {tx.userName}
+                          </button>
                         </td>
                         <td className="py-4 px-4">
                           <Badge type={tx.userRole} />
@@ -808,6 +814,15 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
                         </td>
                         <td className="py-4 px-6 font-mono text-xs text-slate-500">
                           {formatDate(tx.date, true)}
+                        </td>
+                        <td className="py-4 px-4">
+                          {tx.transaction_status === 'approved' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">Approved</span>
+                          ) : tx.transaction_status === 'rejected' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-red-50 text-red-700 border border-red-200">Rejected</span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200">Pending</span>
+                          )}
                         </td>
                       </tr>
                     ))

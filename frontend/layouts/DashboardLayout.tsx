@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 import { Badge } from '../components/Badge';
+import { useNotifications } from '../hooks/useNotifications';
 import {
   LayoutDashboard,
   Users,
@@ -39,6 +41,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 }) => {
   const { user, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const navigate = useNavigate();
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const { notifications, unreadCount, loading: notifLoading, markAsRead, markAllAsRead, refresh: fetchNotifications } = useNotifications();
 
   if (!user) return null;
 
@@ -93,6 +98,16 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       .slice(0, 2)
       .join('')
       .toUpperCase();
+  };
+
+  const timeAgo = (dateString: string) => {
+    const seconds = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
+    if (seconds < 60) return 'just now';
+    const mins = Math.floor(seconds / 60);
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
   };
 
   // Shared Sidebar contents (renders desktop and mobile)
@@ -206,18 +221,68 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
           {/* User badge and actions */}
           <div className="flex items-center gap-4">
-            {/* Nav notifications button */}
+            {/* Notification bell with dropdown */}
             <div className="relative">
               <button
-                onClick={() => setActiveTab('verifications')}
-                className="rounded-full p-2 text-[#64748B] hover:bg-slate-50 hover:text-slate-600 transition"
-                title={`${pendingCount} Pending Verifications`}
+                onClick={() => { setIsNotifOpen(!isNotifOpen); if (!isNotifOpen) fetchNotifications(); }}
+                className="rounded-full p-2 text-[#64748B] hover:bg-slate-50 hover:text-slate-600 transition relative"
+                title="Notifications"
               >
                 <Bell className="h-5 w-5" />
-                {pendingCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-[#3B82F6] border-2 border-white rounded-full"></span>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[9px] font-bold rounded-full px-0.5 border-2 border-white">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
                 )}
               </button>
+
+              {isNotifOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setIsNotifOpen(false)} />
+                  <div className="absolute right-0 top-10 z-50 w-80 rounded-xl border border-slate-200 bg-white shadow-xl overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">Notifications</h3>
+                      {unreadCount > 0 && (
+                        <button onClick={markAllAsRead} className="text-[10px] font-bold text-blue-600 hover:underline">
+                          Mark all read
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                      {notifLoading ? (
+                        <div className="py-8 text-center text-xs text-slate-400">Loading…</div>
+                      ) : notifications.length === 0 ? (
+                        <div className="py-8 text-center text-xs text-slate-400">No notifications yet.</div>
+                      ) : (
+                        notifications.map((notif) => (
+                          <div
+                            key={notif.id}
+                            onClick={async () => {
+                              if (!notif.is_read) await markAsRead(notif.id);
+                              setIsNotifOpen(false);
+                              if (notif.sender_id) navigate(`/admin/users/${notif.sender_id}/transactions`);
+                            }}
+                            className={`cursor-pointer px-4 py-3 hover:bg-slate-50 transition ${!notif.is_read ? 'border-l-2 border-blue-500 bg-blue-50/30' : ''}`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <p className={`text-xs leading-tight ${!notif.is_read ? 'font-bold text-slate-900' : 'font-semibold text-slate-700'}`}>
+                                {notif.title}
+                              </p>
+                              <span className="text-[9px] text-slate-400 shrink-0 font-mono">{timeAgo(notif.created_at)}</span>
+                            </div>
+                            <p className="text-[10px] text-slate-500 mt-0.5 leading-snug line-clamp-2">{notif.message}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="border-t border-slate-100 px-4 py-2 bg-slate-50">
+                      <p className="text-[9px] text-slate-400 text-center font-mono">In-app notifications only</p>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="h-8 w-[1px] bg-[#E2E8F0]"></div>

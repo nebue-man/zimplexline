@@ -7,6 +7,7 @@ import Signup from './pages/Signup';
 import Register from './pages/Register';
 import Dashboard from './pages/dashboard/Dashboard';
 import VerifyDetail from './pages/VerifyDetail';
+import UserTransactions from './pages/admin/UserTransactions';
 
 export default function App() {
   return (
@@ -33,6 +34,15 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['admin', 'manager', 'agent']}>
                 <VerifyDetail />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/users/:userId/transactions"
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <UserTransactions />
               </ProtectedRoute>
             }
           />

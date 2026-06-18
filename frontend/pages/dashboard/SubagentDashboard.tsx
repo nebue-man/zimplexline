@@ -236,25 +236,26 @@ export default function SubagentDashboard({ activeTab, setActiveTab }: SubagentD
           {/* Table list */}
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[600px] table-auto border-collapse text-left text-sm text-slate-655 font-medium animate-in">
+              <table className="w-full min-w-[700px] table-auto border-collapse text-left text-sm text-slate-655 font-medium animate-in">
                 <thead>
                   <tr className="border-b bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-450">
                     <th className="py-3 px-6">Transaction ID</th>
                     <th className="py-3 px-4">Transaction Type</th>
                     <th className="py-3 px-4">Calculated Amount</th>
                     <th className="py-3 px-6">Booking Date</th>
+                    <th className="py-3 px-4">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {txLoading ? (
                     [...Array(3)].map((_, i) => (
                       <tr key={i} className="animate-pulse">
-                        <td colSpan={4} className="py-5 px-6"><div className="h-4 bg-slate-50 rounded" /></td>
+                        <td colSpan={5} className="py-5 px-6"><div className="h-4 bg-slate-50 rounded" /></td>
                       </tr>
                     ))
                   ) : txList.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="py-12 text-center text-slate-450 italic font-mono">
+                      <td colSpan={5} className="py-12 text-center text-slate-450 italic font-mono">
                         No recorded transactions matching filters.
                       </td>
                     </tr>
@@ -265,6 +266,15 @@ export default function SubagentDashboard({ activeTab, setActiveTab }: SubagentD
                         <td className="py-4 px-4"><Badge type={tx.type} /></td>
                         <td className="py-4 px-4 font-mono font-bold text-slate-900">{formatLKR(tx.amount)}</td>
                         <td className="py-4 px-6 font-mono text-xs text-slate-550">{formatDate(tx.date, true)}</td>
+                        <td className="py-4 px-4">
+                          {tx.transaction_status === 'approved' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">Approved</span>
+                          ) : tx.transaction_status === 'rejected' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-red-50 text-red-700 border border-red-200">Rejected</span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200">Pending</span>
+                          )}
+                        </td>
                       </tr>
                     ))
                   )}

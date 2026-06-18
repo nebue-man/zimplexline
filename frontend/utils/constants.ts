@@ -71,6 +71,12 @@ export const API_ENDPOINTS = {
     reviewQueue: '/bank-slips/review-queue',
     review: (id: string) => `/bank-slips/${id}/review`,
   },
+  notifications: {
+    list: '/notifications',
+    unreadCount: '/notifications/unread-count',
+    markRead: (id: string) => `/notifications/${id}/read`,
+    markAllRead: '/notifications/read-all',
+  },
   admin: {
     users: '/admin/users',
     userById: (id: string) => `/admin/users/${id}`,
@@ -79,5 +85,8 @@ export const API_ENDPOINTS = {
     commissions: '/admin/commissions',
     auditLogs: '/admin/audit-logs',
     systemStats: '/admin/system-stats',
+    userTransactions: (userId: string) => `/admin/users/${userId}/transactions`,
+    approveTransaction: (id: string) => `/admin/transactions/${id}/approve`,
+    rejectTransaction: (id: string) => `/admin/transactions/${id}/reject`,
   },
 };

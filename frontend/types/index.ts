@@ -34,6 +34,7 @@ export interface Transaction {
     branch: string;
     account_number: string;
   };
+  transaction_status?: 'pending' | 'approved' | 'rejected';
 }
 
 export interface Commission {
@@ -48,6 +49,19 @@ export interface Commission {
   percentage: number;
   amount: number;
   date: string;
+  commission_status?: 'pending' | 'approved' | 'rejected';
+}
+
+export interface Notification {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  is_read: boolean;
+  created_at: string;
+  transaction_id: string | null;
+  sender_id: string;
+  sender: { full_name: string; role: string };
 }
 
 export interface DashboardSummary {

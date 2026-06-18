@@ -61,7 +61,8 @@ router.get(
         const dataResult = await db.query(
           `SELECT t.id, t.user_id AS "userId", u.full_name AS "userName", u.role AS "userRole",
                   t.type, t.amount, t.transaction_date AS date, t.recorded_by AS "recordedBy",
-                  cb.full_name AS "recordedByName", t.player_id AS "player_id", t.bank_slip_url AS "bank_slip_url"
+                  cb.full_name AS "recordedByName", t.player_id AS "player_id", t.bank_slip_url AS "bank_slip_url",
+                  t.transaction_status AS "transaction_status"
            FROM transactions t
            JOIN users u ON t.user_id = u.id
            LEFT JOIN users cb ON cb.id = t.recorded_by
@@ -101,7 +102,8 @@ router.get(
            )
            SELECT t.id, t.user_id AS "userId", u.full_name AS "userName", u.role AS "userRole",
                   t.type, t.amount, t.transaction_date AS date, t.recorded_by AS "recordedBy",
-                  cb.full_name AS "recordedByName", t.player_id AS "player_id", t.bank_slip_url AS "bank_slip_url"
+                  cb.full_name AS "recordedByName", t.player_id AS "player_id", t.bank_slip_url AS "bank_slip_url",
+                  t.transaction_status AS "transaction_status"
            FROM transactions t
            JOIN users u ON t.user_id = u.id
            LEFT JOIN users cb ON cb.id = t.recorded_by
@@ -130,7 +132,8 @@ router.get(
 
       const dataResult = await db.query(
         `SELECT t.id, t.user_id AS "userId", u.full_name AS "userName", u.role AS "userRole",
-                t.type, t.amount, t.transaction_date AS date, t.player_id AS "player_id"
+                t.type, t.amount, t.transaction_date AS date, t.player_id AS "player_id",
+                t.transaction_status AS "transaction_status"
          FROM transactions t
          JOIN users u ON t.user_id = u.id
          ${wc}
@@ -177,20 +180,76 @@ router.post(
       }
 
       const txResult = await client.query(
-        `INSERT INTO transactions (user_id, type, amount, recorded_by, transaction_date, withdrawal_details, player_id, bank_slip_url)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         RETURNING id`,
+        `INSERT INTO transactions (user_id, type, amount, recorded_by, transaction_date, withdrawal_details, player_id, bank_slip_url, transaction_status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+         RETURNING id, transaction_date`,
         [userId, type, parseFloat(amount), userId, date ? new Date(date) : new Date(), withdrawal_details ? JSON.stringify(withdrawal_details) : null, player_id || null, bankSlipUrl]
       );
 
       const transactionId = txResult.rows[0].id;
       await calculate(transactionId, client);
 
+      // Mark all commissions for this transaction as pending
+      const commResult = await client.query(
+        `UPDATE commissions SET commission_status = 'pending' WHERE transaction_id = $1 RETURNING id`,
+        [transactionId]
+      );
+      const commissionsTriggered = commResult.rowCount;
+
+      // Get user info for notification message
+      const userInfoResult = await client.query(
+        'SELECT full_name, role FROM users WHERE id = $1',
+        [userId]
+      );
+      const userFullName = userInfoResult.rows[0]?.full_name || 'Unknown';
+      const userRole = userInfoResult.rows[0]?.role || 'unknown';
+
+      // Find admin in hierarchy
+      const adminResult = await client.query(
+        `WITH RECURSIVE chain AS (
+           SELECT id, parent_id, role FROM users WHERE id = $1
+           UNION ALL
+           SELECT u.id, u.parent_id, u.role FROM users u JOIN chain c ON u.id = c.parent_id WHERE c.parent_id IS NOT NULL
+         )
+         SELECT id FROM chain WHERE role = 'admin' LIMIT 1`,
+        [userId]
+      );
+      const adminId = adminResult.rows[0]?.id;
+
+      // Build notification message and insert
+      let notificationSent = false;
+      if (adminId) {
+        const txDateStr = new Date(txResult.rows[0].transaction_date).toLocaleDateString('en-LK');
+        let notifType, notifTitle, notifMessage;
+        if (type === 'deposit') {
+          notifType = 'deposit_pending';
+          notifTitle = 'New Deposit — Pending Approval';
+          notifMessage = `User: ${userFullName} (${userRole})\nAmount: LKR ${parseFloat(amount).toFixed(2)}\nPlayer ID: ${player_id || 'Not provided'}\nDate: ${txDateStr}\nBank Slip: ${bankSlipUrl || 'Not provided'}`;
+        } else {
+          const wd = withdrawal_details || {};
+          notifType = 'withdrawal_pending';
+          notifTitle = 'New Withdrawal — Pending Approval';
+          notifMessage = `User: ${userFullName} (${userRole})\nAmount: LKR ${parseFloat(amount).toFixed(2)}\nWithdrawal Code: ${wd.withdrawal_code || 'N/A'}\nBank: ${wd.bank || 'N/A'}\nBranch: ${wd.branch || 'N/A'}\nAccount: ${wd.account_number || 'N/A'}\nDate: ${txDateStr}`;
+        }
+        await client.query(
+          `INSERT INTO notifications (recipient_id, sender_id, transaction_id, type, title, message)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [adminId, userId, transactionId, notifType, notifTitle, notifMessage]
+        );
+        notificationSent = true;
+      }
+
       await client.query('COMMIT');
 
       return res.status(201).json({
         success: true,
-        data: { transactionId, message: 'Transaction recorded successfully.' },
+        data: {
+          transactionId,
+          transaction_status: 'pending',
+          commissions_triggered: commissionsTriggered,
+          notification_sent: notificationSent,
+          message: 'Transaction submitted and pending admin approval',
+        },
       });
     } catch (err) {
       await client.query('ROLLBACK');
@@ -216,7 +275,8 @@ router.get(
       const result = await db.query(
         `SELECT t.id, t.user_id AS "userId", u.full_name AS "userName", u.role AS "userRole",
                 t.type, t.amount, t.transaction_date AS date, t.recorded_by AS "recordedBy",
-                cb.full_name AS "recordedByName", t.player_id AS "player_id", t.bank_slip_url AS "bank_slip_url"
+                cb.full_name AS "recordedByName", t.player_id AS "player_id", t.bank_slip_url AS "bank_slip_url",
+                t.transaction_status AS "transaction_status"
          FROM transactions t
          JOIN users u ON t.user_id = u.id
          LEFT JOIN users cb ON cb.id = t.recorded_by
@@ -291,6 +351,7 @@ function formatTransaction(t, role) {
     recordedBy: t.recordedBy || undefined,
     recordedByName: t.recordedByName || undefined,
     player_id: t.player_id || undefined,
+    transaction_status: t.transaction_status || 'pending',
   };
   if (role === 'admin') {
     result.bank_slip_url = t.bank_slip_url || undefined;
