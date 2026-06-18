@@ -181,20 +181,15 @@ async function calculate(transactionId, dbClient) {
               : rates['agent_direct_subagent_deposit_low'];
 
           await insertCommission(agentAncestor.id, rateUsed, commAmount, 'direct_agent_deposit');
-        } else {
-          // Deeper subagent under agent
-          const rate = rates['agent_deep_team_deposit'];
-          await insertCommission(agentAncestor.id, rate, round2(amount * rate), 'deep_team_deposit');
         }
+        // Deeper sub-agent deposit: agent earns nothing — only direct sub-agents trigger agent commissions
       } else {
-        // Withdrawal
+        // Withdrawal — agent only earns from direct sub-agents
         if (isDirectChild) {
           const rate = rates['agent_direct_subagent_withdrawal'];
           await insertCommission(agentAncestor.id, rate, round2(amount * rate), 'direct_agent_withdrawal');
-        } else {
-          const rate = rates['agent_deep_team_withdrawal'];
-          await insertCommission(agentAncestor.id, rate, round2(amount * rate), 'deep_team_withdrawal');
         }
+        // Deeper sub-agent withdrawal: agent earns nothing
       }
     }
   }

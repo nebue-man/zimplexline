@@ -56,15 +56,13 @@ const RATE_GROUPS = [
   },
   {
     title: 'Agent Rates',
-    subtitle: 'Commissions earned by Agents',
+    subtitle: 'Commissions earned by Agents (direct sub-agents only)',
     badge: 'Agent',
     badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
     rows: [
-      { key: 'agent_direct_subagent_deposit_low',  label: 'Sub-agent Deposit (under 20k/month)',  desc: 'Rate when sub-agent monthly deposits are below 20,000 LKR',       placeholder: '2.5 (system default)' },
-      { key: 'agent_direct_subagent_deposit_high', label: 'Sub-agent Deposit (over 20k/month)',   desc: 'Rate when sub-agent monthly deposits reach 20,000 LKR or more',  placeholder: '3 (system default)' },
-      { key: 'agent_direct_subagent_withdrawal',   label: 'Sub-agent Withdrawal',                 desc: 'Commission on direct sub-agent withdrawal activity',             placeholder: '1 (system default)' },
-      { key: 'agent_deep_team_deposit',            label: 'Deep Team Deposit',                    desc: 'Commission from deeper sub-agent deposit activity',              placeholder: '0.3 (system default)' },
-      { key: 'agent_deep_team_withdrawal',         label: 'Deep Team Withdrawal',                 desc: 'Commission from deeper sub-agent withdrawal activity',           placeholder: '0.1 (system default)' },
+      { key: 'agent_direct_subagent_deposit_low',  label: 'Sub-agent Deposit (under 20k/month)',  desc: 'Rate when sub-agent monthly deposits are below 20,000 LKR',      placeholder: '2.5 (system default)' },
+      { key: 'agent_direct_subagent_deposit_high', label: 'Sub-agent Deposit (over 20k/month)',   desc: 'Rate when sub-agent monthly deposits reach 20,000 LKR or more', placeholder: '3 (system default)' },
+      { key: 'agent_direct_subagent_withdrawal',   label: 'Sub-agent Withdrawal',                 desc: 'Commission on direct sub-agent withdrawal activity',            placeholder: '1 (system default)' },
     ],
   },
   {
