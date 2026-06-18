@@ -670,7 +670,7 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
               <button
                 type="button"
                 onClick={() => setIsTxModalOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-650 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 cursor-pointer shadow-xs"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 cursor-pointer shadow-xs"
               >
                 <Plus className="h-4 w-4" /> Record Transaction
               </button>
