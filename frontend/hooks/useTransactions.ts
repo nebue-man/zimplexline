@@ -79,7 +79,7 @@ export function useTransactions() {
     amount: number;
     date: string;
     player_id?: string;
-    bank_slip?: string;
+    bankSlipFile?: File;
     withdrawal_details?: {
       withdrawal_code: string;
       bank: string;
@@ -90,9 +90,28 @@ export function useTransactions() {
     try {
       const endpoint = API_ENDPOINTS.transactions.create;
 
-      const response = await api.post(endpoint, txData);
+      if (txData.bankSlipFile) {
+        const formData = new FormData();
+        formData.append('type', txData.type);
+        formData.append('amount', String(txData.amount));
+        formData.append('date', txData.date);
+        if (txData.player_id) formData.append('player_id', txData.player_id);
+        formData.append('bank_slip', txData.bankSlipFile);
+
+        const response = await api.post(endpoint, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        if (response.data?.success) {
+          await fetchTransactions();
+          return { success: true };
+        }
+        return { success: false, message: response.data?.message || 'Failed to record transaction' };
+      }
+
+      const { bankSlipFile: _f, ...jsonData } = txData;
+      const response = await api.post(endpoint, jsonData);
       if (response.data?.success) {
-        await fetchTransactions(); // Refresh
+        await fetchTransactions();
         return { success: true };
       }
       return { success: false, message: response.data?.message || 'Failed to record transaction' };

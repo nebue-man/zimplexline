@@ -6,6 +6,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { handleValidationErrors } = require('../middleware/validate');
 const { buildTransactionFilters } = require('../utils/transactionUtils');
 const { calculate } = require('../utils/commissionEngine');
+const { upload } = require('../utils/uploadHandler');
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -159,6 +160,12 @@ router.get(
 router.post(
   '/',
   authenticateToken,
+  (req, res, next) => {
+    upload.single('bank_slip')(req, res, (err) => {
+      if (err) return res.status(400).json({ success: false, message: err.message });
+      next();
+    });
+  },
   [
     body('type').isIn(['deposit', 'withdrawal']).withMessage('type must be deposit or withdrawal.'),
     body('amount').isFloat({ min: 0.01 }).withMessage('amount must be a positive number.'),
@@ -173,11 +180,18 @@ router.post(
       const { type, amount, date, withdrawal_details, player_id } = req.body;
       const userId = req.user.id;
 
+      let bankSlipUrl = null;
+      if (req.file) {
+        bankSlipUrl = req.file.path.startsWith('http')
+          ? req.file.path
+          : `/uploads/${req.file.filename}`;
+      }
+
       const txResult = await client.query(
-        `INSERT INTO transactions (user_id, type, amount, recorded_by, transaction_date, withdrawal_details, player_id, transaction_status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
+        `INSERT INTO transactions (user_id, type, amount, recorded_by, transaction_date, withdrawal_details, player_id, bank_slip_url, transaction_status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
          RETURNING id, transaction_date`,
-        [userId, type, parseFloat(amount), userId, date ? new Date(date) : new Date(), withdrawal_details ? JSON.stringify(withdrawal_details) : null, player_id || null]
+        [userId, type, parseFloat(amount), userId, date ? new Date(date) : new Date(), withdrawal_details ? JSON.stringify(withdrawal_details) : null, player_id || null, bankSlipUrl]
       );
 
       const transactionId = txResult.rows[0].id;
@@ -218,7 +232,7 @@ router.post(
         if (type === 'deposit') {
           notifType = 'deposit_pending';
           notifTitle = 'New Deposit — Pending Approval';
-          notifMessage = `User: ${userFullName} (${userRole})\nAmount: LKR ${parseFloat(amount).toFixed(2)}\nPlayer ID: ${player_id || 'Not provided'}\nDate: ${txDateStr}`;
+          notifMessage = `User: ${userFullName} (${userRole})\nAmount: LKR ${parseFloat(amount).toFixed(2)}\nPlayer ID: ${player_id || 'Not provided'}\nDate: ${txDateStr}${bankSlipUrl ? '\nBank Slip: Uploaded' : ''}`;
         } else {
           const wd = withdrawal_details || {};
           notifType = 'withdrawal_pending';
