@@ -31,7 +31,7 @@ export function useTeam() {
         }
       } catch (capErr) {
         // Fallback calculations based on user role and constants
-        const maxCapacity = user.role === 'manager' ? 5 : user.role === 'agent' ? 10 : 0;
+        const maxCapacity = user.role === 'manager' ? 5 : (user.role === 'agent' || user.role === 'direct_agent') ? 10 : 0;
         setCapacity({
           current: teamRes.data?.data?.length || 0,
           max: maxCapacity,

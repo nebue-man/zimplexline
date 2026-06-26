@@ -1,6 +1,6 @@
 const db = require('../database');
 
-const CAPACITY_LIMITS = { admin: 10, manager: 5, agent: 10, subagent: 10 };
+const CAPACITY_LIMITS = { admin: 10, manager: 5, agent: 10, subagent: 10, direct_agent: 10 };
 
 async function checkCapacity(parentId, dbClient) {
   const client = dbClient || db;

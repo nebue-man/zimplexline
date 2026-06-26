@@ -5,6 +5,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Register from './pages/Register';
+import DirectAgentRegister from './pages/DirectAgentRegister';
 import Dashboard from './pages/dashboard/Dashboard';
 import VerifyDetail from './pages/VerifyDetail';
 import UserTransactions from './pages/admin/UserTransactions';
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/register/direct-agent" element={<DirectAgentRegister />} />
 
           {/* Secure Protected Hubs */}
           <Route
@@ -32,7 +34,7 @@ export default function App() {
           <Route
             path="/verify/:userId"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'manager', 'agent']}>
+              <ProtectedRoute allowedRoles={['admin', 'manager', 'agent', 'direct_agent']}>
                 <VerifyDetail />
               </ProtectedRoute>
             }

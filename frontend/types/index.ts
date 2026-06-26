@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'manager' | 'agent' | 'subagent';
+export type UserRole = 'admin' | 'manager' | 'agent' | 'subagent' | 'direct_agent';
 export type UserStatus = 'pending' | 'approved' | 'rejected';
 export type TransactionType = 'deposit' | 'withdrawal';
 

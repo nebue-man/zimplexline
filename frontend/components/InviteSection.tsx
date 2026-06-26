@@ -14,6 +14,7 @@ const ROLE_LABELS: Record<string, string> = {
   manager: 'Manager',
   agent: 'Agent',
   subagent: 'Sub-agent',
+  direct_agent: 'Direct Agent',
 };
 
 const STATUS_STYLES: Record<string, string> = {

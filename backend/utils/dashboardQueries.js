@@ -249,7 +249,7 @@ async function getEarningsHistory(userId, role, period, groupBy, dbClient) {
 
   // Recent transactions (last 5 from downline for managers/agents, own for subagents)
   let recentTx = [];
-  if (role === 'admin' || role === 'manager' || role === 'agent') {
+  if (role === 'admin' || role === 'manager' || role === 'agent' || role === 'direct_agent') {
     const txResult = await client.query(
       `WITH RECURSIVE downline AS (
          SELECT id FROM users WHERE parent_id = $1 AND is_deleted = false
@@ -371,4 +371,66 @@ async function getSystemStats(adminId, dbClient) {
   };
 }
 
-module.exports = { getAdminSummary, getManagerSummary, getAgentSummary, getSubagentSummary, getEarningsHistory, getSystemStats };
+async function getDirectAgentSummary(userId, dbClient) {
+  const client = dbClient || db;
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+
+  const thisMonthResult = await client.query(
+    `SELECT COALESCE(SUM(amount), 0) AS total
+     FROM commissions WHERE beneficiary_id = $1 AND created_at >= $2 AND commission_type != 'agent_locked'`,
+    [userId, startOfMonth]
+  );
+
+  const allTimeResult = await client.query(
+    `SELECT COALESCE(SUM(amount), 0) AS all_time
+     FROM commissions WHERE beneficiary_id = $1 AND commission_type != 'agent_locked'`,
+    [userId]
+  );
+
+  const teamResult = await client.query(
+    `SELECT COUNT(*) FROM users WHERE parent_id = $1 AND is_deleted = false`,
+    [userId]
+  );
+
+  const pendingResult = await client.query(
+    `SELECT COUNT(*) FROM users WHERE parent_id = $1 AND verification_status = 'pending' AND is_deleted = false`,
+    [userId]
+  );
+
+  const ratesResult = await client.query(
+    'SELECT rate_value FROM commission_rates WHERE rate_key = $1',
+    ['direct_agent_unlock_threshold']
+  );
+  const threshold = ratesResult.rows.length > 0 ? parseFloat(ratesResult.rows[0].rate_value) : 10000;
+
+  const unlockResult = await client.query(
+    'SELECT * FROM monthly_agent_unlock WHERE agent_id = $1 AND year = $2 AND month = $3',
+    [userId, year, month]
+  );
+
+  const unlockRow = unlockResult.rows[0];
+  const totalOwnDeposits = unlockRow ? parseFloat(unlockRow.total_own_deposits) : 0;
+  const isUnlocked = unlockRow ? unlockRow.is_unlocked : false;
+
+  return {
+    totalEarningsThisMonth: parseFloat(thisMonthResult.rows[0].total),
+    allTimeEarnings: parseFloat(allTimeResult.rows[0].all_time),
+    teamSize: { directSubagents: parseInt(teamResult.rows[0].count, 10) },
+    pendingVerifications: parseInt(pendingResult.rows[0].count, 10),
+    agentMonthlyDepositTotal: totalOwnDeposits,
+    agentIsUnlocked: isUnlocked,
+    agentUnlockStatus: {
+      isUnlocked,
+      totalOwnDeposits,
+      threshold,
+      remaining: Math.max(0, threshold - totalOwnDeposits),
+      progressPercent: Math.min(100, Math.round((totalOwnDeposits / threshold) * 100)),
+      unlockedAt: unlockRow && unlockRow.unlocked_at ? unlockRow.unlocked_at.toISOString() : null,
+    },
+  };
+}
+
+module.exports = { getAdminSummary, getManagerSummary, getAgentSummary, getSubagentSummary, getDirectAgentSummary, getEarningsHistory, getSystemStats };

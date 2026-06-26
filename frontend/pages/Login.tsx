@@ -195,13 +195,12 @@ export default function Login() {
             </button>
           </form>
 
-          {/* Setup admin trigger */}
           <div className="mt-6 border-t border-slate-100 pt-5 text-center">
             <Link
-              to="/signup"
-              className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline transition"
+              to="/register/direct-agent"
+              className="text-xs font-semibold text-violet-600 hover:text-violet-700 hover:underline transition"
             >
-              Create your network → Sign up as Admin
+              Join as Direct Agent → Register here
             </Link>
           </div>
 

@@ -52,6 +52,7 @@ function getPositionalRole(user, ancestors) {
   if (user.role === 'admin') return 'admin';
   if (user.role === 'manager') return 'manager';
   if (user.role === 'agent') return 'agent';
+  if (user.role === 'direct_agent') return 'direct_agent';
   return 'subagent';
 }
 
@@ -83,7 +84,7 @@ async function getCapacityInfo(userId, dbClient) {
 
   const { role } = userResult.rows[0];
 
-  const CAPACITY_MAP = { manager: 5, agent: 10, subagent: 10 };
+  const CAPACITY_MAP = { manager: 5, agent: 10, subagent: 10, direct_agent: 10 };
   const maxChildren = CAPACITY_MAP[role] || 0;
 
   const countResult = await client.query(

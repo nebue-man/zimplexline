@@ -1,0 +1,593 @@
+import React, { useState } from 'react';
+import { useDashboard } from '../../hooks/useDashboard';
+import { useTeam } from '../../hooks/useTeam';
+import { useTransactions } from '../../hooks/useTransactions';
+import { useCommissions } from '../../hooks/useCommissions';
+import { useVerifications } from '../../hooks/useVerifications';
+import { useAuth } from '../../context/useAuth';
+import { SummaryCard } from '../../components/SummaryCard';
+import { Badge } from '../../components/Badge';
+import { Pagination } from '../../components/Pagination';
+import { Modal } from '../../components/Modal';
+import { Toast, ToastType } from '../../components/Toast';
+import { InviteSection } from '../../components/InviteSection';
+import { IDPhotoViewer } from '../../components/IDPhotoViewer';
+import { EarningsChart } from '../../components/EarningsChart';
+import { AgentUnlockBanner } from '../../components/AgentUnlockBanner';
+import { LoadingSpinner } from '../../components/LoadingSpinner';
+import { formatLKR, formatDate, formatPercent } from '../../utils/format';
+import { API_ENDPOINTS } from '../../utils/constants';
+import api from '../../api/axios';
+import {
+  Coins,
+  Users,
+  CheckCircle,
+  TrendingUp,
+  Copy,
+  Plus,
+  Info,
+  Upload,
+  ArrowRightLeft,
+} from 'lucide-react';
+import { TeamMember, Transaction, Commission, User } from '../../types';
+
+interface DirectAgentDashboardProps {
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
+}
+
+export default function DirectAgentDashboard({ activeTab, setActiveTab }: DirectAgentDashboardProps) {
+  const { user: currentUser } = useAuth();
+  const { data: metrics, unlockStatus, loading: mLoading, refresh: refreshSummary } = useDashboard();
+  const { data: teamMembers, generateInviteLink, loading: tLoading, refresh: refreshTeam } = useTeam();
+  const inviteLink = generateInviteLink();
+
+  const {
+    data: txList,
+    totalCount: txTotalCount,
+    filters: txFilters,
+    loading: txLoading,
+    updateFilters: setTxFilters,
+    recordTransaction,
+    refresh: refreshTx,
+  } = useTransactions();
+
+  const {
+    data: commList,
+    totalCount: commTotalCount,
+    filters: commFilters,
+    loading: commLoading,
+    updateFilters: setCommFilters,
+    refresh: refreshComm,
+  } = useCommissions();
+
+  const {
+    data: verifList,
+    loading: verLoading,
+    verifyUser,
+    refresh: refreshVerifs,
+  } = useVerifications();
+
+  const [toastMsg, setToastMsg] = useState('');
+  const [toastType, setToastType] = useState<ToastType>('success');
+  const showToast = (msg: string, type: ToastType = 'success') => { setToastMsg(msg); setToastType(type); };
+
+  const [isTxModalOpen, setIsTxModalOpen] = useState(false);
+  const [txType, setTxType] = useState<'deposit' | 'withdrawal'>('deposit');
+  const [txAmount, setTxAmount] = useState('');
+  const [txDate, setTxDate] = useState(new Date().toISOString().slice(0, 10));
+  const [txPlayerId, setTxPlayerId] = useState('');
+  const [txWithdrawalCode, setTxWithdrawalCode] = useState('');
+  const [txWithdrawalBank, setTxWithdrawalBank] = useState('');
+  const [txWithdrawalBranch, setTxWithdrawalBranch] = useState('');
+  const [txWithdrawalAccount, setTxWithdrawalAccount] = useState('');
+  const [txSubmitting, setTxSubmitting] = useState(false);
+  const [txBankSlipFile, setTxBankSlipFile] = useState<File | null>(null);
+  const [txBankSlipPreview, setTxBankSlipPreview] = useState<string | null>(null);
+  const [txBankSlipName, setTxBankSlipName] = useState('');
+  const [txBankSlipDrag, setTxBankSlipDrag] = useState(false);
+
+  const [verReviewUser, setVerReviewUser] = useState<User | null>(null);
+  const [verStatus, setVerStatus] = useState<'approved' | 'rejected'>('approved');
+  const [verRejectReason, setVerRejectReason] = useState('');
+  const [verReasonOpen, setVerReasonOpen] = useState(false);
+  const [verSubmitting, setVerSubmitting] = useState(false);
+
+  const handleCopyInvite = () => {
+    if (!inviteLink) return;
+    navigator.clipboard.writeText(inviteLink);
+    showToast('Recruitment invitation link copied to clipboard.', 'success');
+  };
+
+  const handleBankSlipChange = (file: File) => {
+    if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type)) {
+      showToast('Only JPG, PNG, WebP, and PDF files are accepted.', 'warning');
+      return;
+    }
+    setTxBankSlipFile(file);
+    setTxBankSlipName(file.name);
+    setTxBankSlipPreview(file.type.startsWith('image/') ? URL.createObjectURL(file) : null);
+  };
+
+  const handleRecordTx = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!txAmount || Number(txAmount) <= 0) { showToast('Please supply a positive numerical LKR value.', 'warning'); return; }
+    if (txType === 'deposit' && !txPlayerId.trim()) { showToast('Player ID is required for deposits.', 'warning'); return; }
+    if (txType === 'deposit' && !txBankSlipFile) { showToast('Please upload your bank slip to continue.', 'warning'); return; }
+    if (txType === 'withdrawal' && (!txWithdrawalCode.trim() || !txWithdrawalBank.trim() || !txWithdrawalBranch.trim() || !txWithdrawalAccount.trim())) {
+      showToast('Please fill in all withdrawal details.', 'warning'); return;
+    }
+    setTxSubmitting(true);
+    try {
+      const res = await recordTransaction({
+        type: txType,
+        amount: Number(txAmount),
+        date: txDate,
+        ...(txType === 'deposit' ? { player_id: txPlayerId, bankSlipFile: txBankSlipFile! } : {}),
+        ...(txType === 'withdrawal' ? { withdrawal_details: { withdrawal_code: txWithdrawalCode, bank: txWithdrawalBank, branch: txWithdrawalBranch, account_number: txWithdrawalAccount } } : {}),
+      });
+      if (res.success) {
+        showToast('Activity recorded successfully.', 'success');
+        setIsTxModalOpen(false);
+        setTxAmount(''); setTxPlayerId(''); setTxBankSlipFile(null); setTxBankSlipPreview(null); setTxBankSlipName('');
+        setTxWithdrawalCode(''); setTxWithdrawalBank(''); setTxWithdrawalBranch(''); setTxWithdrawalAccount('');
+        refreshSummary(); refreshTx();
+      } else {
+        showToast(res.message || 'Error recording transaction.', 'error');
+      }
+    } catch { showToast('API network issue.', 'error'); }
+    finally { setTxSubmitting(false); }
+  };
+
+  const handleVerifySubmit = async () => {
+    if (!verReviewUser) return;
+    if (verStatus === 'rejected' && !verRejectReason.trim()) { showToast('A rejection reason is mandatory.', 'warning'); return; }
+    setVerSubmitting(true);
+    try {
+      const res = await verifyUser(verReviewUser.id, verStatus, verRejectReason);
+      if (res.success) {
+        showToast('Verification reviewed and saved.', 'success');
+        setVerReasonOpen(false); setVerReviewUser(null); setVerRejectReason('');
+        refreshVerifs(); refreshSummary();
+      } else { showToast(res.message || 'Action failed', 'error'); }
+    } catch { showToast('Network issue.', 'error'); }
+    finally { setVerSubmitting(false); }
+  };
+
+  const isUnlocked = unlockStatus?.isUnlocked ?? metrics?.agentIsUnlocked ?? false;
+  const currentVolume = metrics?.agentMonthlyDepositTotal || 0;
+  const teamSize = typeof metrics?.teamSize === 'object' ? metrics.teamSize.directSubagents : (metrics?.teamSize || 0);
+
+  return (
+    <div className="space-y-6">
+
+      {toastMsg && <Toast message={toastMsg} type={toastType} onClose={() => setToastMsg('')} />}
+
+      <AgentUnlockBanner status={unlockStatus} />
+
+      {/* OVERVIEW TAB */}
+      {activeTab === 'overview' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          {mLoading ? (
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+              {[...Array(3)].map((_, i) => <div key={i} className="h-32 animate-pulse bg-white border rounded-xl" />)}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+              <SummaryCard title="This Month's Own Deposits" value={formatLKR(currentVolume)} subtext="Deposit LKR 10,000 to unlock sub-agent commissions" icon={TrendingUp} iconColor="text-cyan-600 bg-cyan-50" />
+              <SummaryCard title="Sub-agent Network Size" value={teamSize} subtext="Sub-agents recruited (max 10 allowed)" icon={Users} />
+              <SummaryCard title="All-time Earnings" value={formatLKR(metrics?.allTimeEarnings || 0)} subtext="Total commissions earned" icon={Coins} iconColor="text-emerald-600 bg-emerald-50" />
+            </div>
+          )}
+
+          {isUnlocked ? (
+            <div className="rounded-xl border border-[#93C5FD] bg-[#EFF6FF] p-5 shadow-sm flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between animate-in slide-in-from-top-1 duration-200">
+              <div className="space-y-1">
+                <h4 className="font-bold text-blue-950 text-sm">Grow Your Sub-agent Network</h4>
+                <p className="text-xs text-blue-800 leading-relaxed max-w-lg">You're unlocked! Share your link to onboard up to 10 sub-agents.</p>
+                {inviteLink && <p className="font-mono text-[11px] text-blue-700 bg-white border border-blue-100 p-1.5 rounded inline-block font-semibold">{inviteLink}</p>}
+              </div>
+              <button onClick={handleCopyInvite} className="shrink-0 inline-flex items-center gap-1.5 rounded-sm bg-[#0F172A] px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800 transition cursor-pointer uppercase tracking-wider">
+                <Copy className="h-4 w-4" /> Copy Recruit Link
+              </button>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-4 flex gap-3 text-slate-650 text-xs shadow-sm">
+              <Info className="h-4.5 w-4.5 text-slate-400 shrink-0 mt-0.5" />
+              <p>Recruitment links are locked. Deposit <span className="font-bold text-slate-900">LKR 10,000</span> this month to unlock sub-agent commissions and invite links.</p>
+            </div>
+          )}
+
+          <div className="mt-8">
+            <EarningsChart type="line" data={metrics?.earningsTrend || []} title="Individual Earnings History Timeline (LKR)" />
+          </div>
+        </div>
+      )}
+
+      {/* MY TEAM TAB */}
+      {activeTab === 'team' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <InviteSection userRole="direct_agent" agentLocked={!isUnlocked} />
+          <div className="border-t border-slate-200" />
+          <div className="flex flex-col gap-1">
+            <h2 className="text-xl font-bold text-slate-950">My Sub-agent Network</h2>
+            <p className="text-xs text-slate-500">Capacity: Recruited <span className="font-semibold text-slate-900">{teamMembers.length}/10</span> direct Sub-agents.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+            {tLoading ? <LoadingSpinner message="Loading team..." /> : teamMembers.length === 0 ? (
+              <div className="col-span-full rounded-xl border border-dashed border-slate-300 p-12 text-center bg-white">
+                <Users className="mx-auto h-11 w-11 text-slate-350" />
+                <h3 className="mt-4 text-sm font-semibold text-slate-900">No Sub-agents Yet</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Invite new sub-agents once unlocked.</p>
+              </div>
+            ) : teamMembers.map((sub) => (
+              <div key={sub.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs flex flex-col justify-between">
+                <div>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="font-bold text-slate-900">{sub.fullName}</h4>
+                      <p className="text-[10px] text-slate-404 font-mono">ID: {sub.id}</p>
+                    </div>
+                    <Badge type={sub.status} />
+                  </div>
+                  <div className="mt-4 space-y-2 text-xs divide-y divide-slate-100">
+                    <div className="flex justify-between pt-1.5"><span className="text-slate-400">Monthly Volume:</span><span className="font-mono font-bold text-slate-900">{formatLKR(sub.monthlyVolume)}</span></div>
+                    <div className="flex justify-between pt-1.5"><span className="text-slate-400">Commissions Sum:</span><span className="font-mono font-bold text-emerald-850">{formatLKR(sub.commissionsGenerated)}</span></div>
+                    <div className="flex justify-between pt-1.5"><span className="text-slate-400">Joined:</span><span className="font-mono text-slate-500">{formatDate(sub.joinedAt)}</span></div>
+                  </div>
+                </div>
+                {sub.status === 'pending' && (
+                  <div className="mt-4 pt-3 border-t text-center">
+                    <span className="text-[10px] font-bold uppercase text-amber-600 bg-amber-50 px-2.5 py-1 rounded border border-amber-100">Awaiting KYC Approval</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* TRANSACTIONS TAB */}
+      {activeTab === 'transactions' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs text-slate-400 uppercase font-mono tracking-wider">Deposits / Withdrawals</p>
+              <h2 className="text-xl font-bold text-slate-950">Transaction Ledger</h2>
+            </div>
+            <button onClick={() => setIsTxModalOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 cursor-pointer shadow-xs">
+              <Plus className="h-4 w-4" /> Book Transaction
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className="text-[10px] font-semibold text-slate-400 uppercase">Search</label>
+              <input type="text" placeholder="Type name or ID..." value={txFilters.search || ''} onChange={(e) => setTxFilters({ search: e.target.value, page: 1 })} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700" />
+            </div>
+            <div>
+              <label className="text-[10px] font-semibold text-slate-400 uppercase">Type</label>
+              <select value={txFilters.type || ''} onChange={(e) => setTxFilters({ type: e.target.value as any, page: 1 })} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700">
+                <option value="">All transactions</option>
+                <option value="deposit">Deposits</option>
+                <option value="withdrawal">Withdrawals</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[700px] table-auto border-collapse text-left text-sm text-slate-655 font-medium">
+                <thead>
+                  <tr className="border-b bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-450">
+                    <th className="py-3 px-6">Transaction ID</th>
+                    <th className="py-3 px-4">User</th>
+                    <th className="py-3 px-4">Type</th>
+                    <th className="py-3 px-4">Amount LKR</th>
+                    <th className="py-3 px-6">Date</th>
+                    <th className="py-3 px-4">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {txLoading ? [...Array(4)].map((_, i) => (
+                    <tr key={i} className="animate-pulse"><td colSpan={6} className="py-5 px-6"><div className="h-4 bg-slate-50 rounded" /></td></tr>
+                  )) : txList.length === 0 ? (
+                    <tr><td colSpan={6} className="py-12 text-center text-slate-450 italic font-mono">No transactions found.</td></tr>
+                  ) : txList.map((tx) => (
+                    <tr key={tx.id} className="hover:bg-slate-50/50">
+                      <td className="py-4 px-6 font-mono text-xs text-slate-404">{tx.id}</td>
+                      <td className="py-4 px-4 font-semibold text-slate-850">{tx.userName}</td>
+                      <td className="py-4 px-4"><Badge type={tx.type} /></td>
+                      <td className="py-4 px-4 font-mono font-bold text-slate-900">{formatLKR(tx.amount)}</td>
+                      <td className="py-4 px-6 font-mono text-xs text-slate-500">{formatDate(tx.date, true)}</td>
+                      <td className="py-4 px-4">
+                        {tx.transaction_status === 'approved' ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">Approved</span>
+                        : tx.transaction_status === 'rejected' ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-red-50 text-red-700 border border-red-200">Rejected</span>
+                        : <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200">Pending</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Pagination currentPage={txFilters.page} totalCount={txTotalCount} pageSize={txFilters.limit} onPageChange={(p) => setTxFilters({ page: p })} />
+          </div>
+        </div>
+      )}
+
+      {/* COMMISSIONS TAB — Direct Agent specific */}
+      {activeTab === 'commissions' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div>
+            <p className="text-xs text-slate-450 font-bold uppercase tracking-wider">Profits Tracker</p>
+            <h2 className="text-xl font-bold text-slate-950">Commission Overview</h2>
+          </div>
+
+          {/* Section 1 — Own Activity */}
+          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="text-sm font-bold text-slate-800 mb-4">My Own Activity Rates</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="rounded-lg bg-slate-50 border border-slate-200 p-4 text-center">
+                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wide">Own Deposit Rate</p>
+                <p className="mt-2 text-2xl font-bold text-slate-900">3.00%</p>
+                <p className="mt-1 text-[10px] text-slate-400 leading-snug">You earn this rate when you record your own deposits</p>
+              </div>
+              <div className="rounded-lg bg-slate-50 border border-slate-200 p-4 text-center">
+                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wide">Own Withdrawal Rate</p>
+                <p className="mt-2 text-2xl font-bold text-slate-900">1.00%</p>
+                <p className="mt-1 text-[10px] text-slate-400 leading-snug">You earn this rate when you record your own withdrawals</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2 — Team Commissions */}
+          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="text-sm font-bold text-slate-800 mb-1">My Team Commission Rates</h3>
+            {isUnlocked ? (
+              <>
+                <p className="text-xs text-slate-500 mb-4">Rates applied when your sub-agents transact (you are unlocked)</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="border-b bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-450">
+                        <th className="py-2 px-4 text-left">Transaction Type</th>
+                        <th className="py-2 px-4 text-center">Your Rate</th>
+                        <th className="py-2 px-4 text-center">Sub-agent Rate</th>
+                        <th className="py-2 px-4 text-center">Admin Rate</th>
+                        <th className="py-2 px-4 text-center">Total Pool</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      <tr>
+                        <td className="py-3 px-4 font-semibold text-slate-800">Deposit</td>
+                        <td className="py-3 px-4 text-center font-mono font-bold text-violet-700">2.50%</td>
+                        <td className="py-3 px-4 text-center font-mono text-slate-600">1.00%</td>
+                        <td className="py-3 px-4 text-center font-mono text-slate-600">1.50%</td>
+                        <td className="py-3 px-4 text-center font-mono font-bold text-slate-900">5.00%</td>
+                      </tr>
+                      <tr>
+                        <td className="py-3 px-4 font-semibold text-slate-800">Withdrawal</td>
+                        <td className="py-3 px-4 text-center font-mono font-bold text-violet-700">1.00%</td>
+                        <td className="py-3 px-4 text-center font-mono text-slate-600">0.40%</td>
+                        <td className="py-3 px-4 text-center font-mono text-slate-600">0.60%</td>
+                        <td className="py-3 px-4 text-center font-mono font-bold text-slate-900">2.00%</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 flex gap-3">
+                <Info className="h-4.5 w-4.5 text-amber-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">Sub-agent Commissions Locked</p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    Deposit <span className="font-bold">LKR 10,000</span> from your own activity this month to unlock sub-agent commission earnings.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Section 3 — Commission History */}
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 mb-3">Commission History</h3>
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[700px] table-auto border-collapse text-left text-sm font-medium">
+                  <thead>
+                    <tr className="border-b bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-450">
+                      <th className="py-3 px-6">Source</th>
+                      <th className="py-3 px-4">Commission Type</th>
+                      <th className="py-3 px-4">Percentage</th>
+                      <th className="py-3 px-4">Amount LKR</th>
+                      <th className="py-3 px-6">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {commLoading ? [...Array(3)].map((_, i) => (
+                      <tr key={i} className="animate-pulse"><td colSpan={5} className="py-5 px-6"><div className="h-4 bg-slate-50 rounded" /></td></tr>
+                    )) : commList.length === 0 ? (
+                      <tr><td colSpan={5} className="py-12 text-center text-slate-450 italic">No commissions logged yet.</td></tr>
+                    ) : commList.map((comm) => (
+                      <tr key={comm.id} className="hover:bg-slate-50/50">
+                        <td className="py-4 px-6 font-semibold text-slate-800">{comm.sourceName}</td>
+                        <td className="py-4 px-4 font-mono text-xs uppercase text-slate-504">{comm.type.replace(/_/g, ' ')}</td>
+                        <td className="py-4 px-4 font-mono font-bold text-slate-650">{formatPercent(comm.percentage)}</td>
+                        <td className="py-4 px-4 font-mono font-extrabold text-slate-950">{formatLKR(comm.amount)}</td>
+                        <td className="py-4 px-6 font-mono text-xs text-slate-500">{formatDate(comm.date, true)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <Pagination currentPage={commFilters.page} totalCount={commTotalCount} pageSize={commFilters.limit} onPageChange={(p) => setCommFilters({ page: p })} />
+            </div>
+          </div>
+
+          {/* Section 4 — How It Works */}
+          <div className="rounded-xl border border-violet-100 bg-violet-50 p-6 shadow-sm">
+            <h3 className="text-sm font-bold text-violet-900 mb-3">How Your Commission Works</h3>
+            <p className="text-xs text-violet-800 leading-relaxed mb-4">
+              As a Direct Agent you earn commissions directly from your sub-agents' activity. There is no Manager above you — your earnings flow directly between you, your team, and the Admin.
+            </p>
+            <div className="rounded-lg bg-white border border-violet-200 p-4 font-mono text-xs text-slate-700 space-y-2">
+              <p className="font-bold text-violet-800 text-[11px] uppercase tracking-wider mb-2">Commission Flow — Per Transaction</p>
+              <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                <span>Sub-agent (actor)</span>
+                <span className="font-bold">1.00% deposit / 0.40% withdrawal</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                <span>You (Direct Agent)</span>
+                <span className="font-bold text-violet-700">2.50% / 1.00%</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                <span>Admin</span>
+                <span className="font-bold">1.50% / 0.60%</span>
+              </div>
+              <div className="flex justify-between font-bold text-slate-900">
+                <span>Total pool</span>
+                <span>5.00% / 2.00%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VERIFICATIONS TAB */}
+      {activeTab === 'verifications' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div>
+            <h2 className="text-xl font-bold text-slate-950">Verify Sub-agents ({verifList.length})</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Review and approve registered sub-agents in your team.</p>
+          </div>
+          {verLoading ? <LoadingSpinner message="Loading verifications..." /> : verifList.length === 0 ? (
+            <div className="rounded-xl border border-dashed text-center p-12 bg-white">
+              <CheckCircle className="h-10 w-10 text-slate-350 mx-auto" />
+              <h3 className="text-sm font-semibold text-slate-909 mt-2">Queue Clear</h3>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 animate-in">
+              {verifList.map((item) => (
+                <div key={item.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs flex flex-col justify-between">
+                  <div>
+                    <h4 className="font-bold text-slate-900">{item.fullName}</h4>
+                    <p className="font-mono text-[10px] text-slate-400 mt-0.5">ID: {item.id} • {formatDate(item.submittedDate)}</p>
+                    <div className="mt-4">
+                      <span className="text-[10px] text-slate-405 font-bold uppercase tracking-wider">Promo Screenshot:</span>
+                      <div className="mt-1"><IDPhotoViewer photoUrl={item.promo_screenshot_url || ''} altText="Promo Screenshot" isThumbnail={true} /></div>
+                    </div>
+                  </div>
+                  <div className="mt-5 pt-3 border-t flex justify-end gap-2.5">
+                    <button onClick={() => { setVerReviewUser({ id: item.id, fullName: item.fullName, role: item.role, status: 'pending', childrenCount: 0, joinedAt: '' }); setVerStatus('approved'); setVerReasonOpen(true); }} className="rounded bg-emerald-55 text-emerald-800 border px-3 py-1 text-xs font-bold hover:bg-emerald-100 cursor-pointer">Approve</button>
+                    <button onClick={() => { setVerReviewUser({ id: item.id, fullName: item.fullName, role: item.role, status: 'pending', childrenCount: 0, joinedAt: '' }); setVerStatus('rejected'); setVerReasonOpen(true); }} className="rounded bg-rose-50 text-rose-700 px-3 py-1 text-xs font-bold border hover:bg-rose-100 cursor-pointer">Reject</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* RECORD TX MODAL */}
+      <Modal isOpen={isTxModalOpen} onClose={() => setIsTxModalOpen(false)} title="Record Activity">
+        <form className="space-y-4" onSubmit={handleRecordTx}>
+          <div>
+            <label className="block text-xs font-bold uppercase text-slate-400 mb-2">Movement Type</label>
+            <div className="flex bg-slate-50 border rounded-md p-1">
+              <button type="button" onClick={() => setTxType('deposit')} className={`flex-1 py-1.5 rounded text-xs font-bold uppercase transition ${txType === 'deposit' ? 'bg-cyan-600 text-white shadow-xs' : 'text-slate-500 hover:bg-slate-100'}`}>Deposit</button>
+              <button type="button" onClick={() => setTxType('withdrawal')} className={`flex-1 py-1.5 rounded text-xs font-bold uppercase transition ${txType === 'withdrawal' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-500 hover:bg-slate-100'}`}>Withdrawal</button>
+            </div>
+          </div>
+          {txType === 'deposit' ? (
+            <div className="space-y-3">
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-2">
+                <div className="flex items-center gap-2 text-blue-800">
+                  <Info className="h-4 w-4 shrink-0" />
+                  <span className="text-xs font-bold uppercase tracking-wide">Deposit Bank Details</span>
+                </div>
+                <div className="text-xs text-blue-900 space-y-1 pl-6">
+                  <p><span className="font-semibold">Name:</span> G M K H Kumara</p>
+                  <p><span className="font-semibold">Bank:</span> HNB</p>
+                  <p><span className="font-semibold">Branch:</span> Balangoda</p>
+                  <p><span className="font-semibold">Account Number:</span> 071010018705</p>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1">Player ID</label>
+                <input type="text" required value={txPlayerId} onChange={(e) => setTxPlayerId(e.target.value)} placeholder="Enter player ID" className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase text-slate-500 mb-1">Bank Slip</label>
+                <div
+                  onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setTxBankSlipDrag(true); }}
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setTxBankSlipDrag(true); }}
+                  onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setTxBankSlipDrag(false); }}
+                  onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setTxBankSlipDrag(false); const f = e.dataTransfer.files?.[0]; if (f) handleBankSlipChange(f); }}
+                  className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-4 transition ${txBankSlipDrag ? 'border-blue-500 bg-blue-50/20' : txBankSlipFile ? 'border-emerald-300 bg-emerald-50/10' : 'border-slate-300 bg-slate-50 hover:bg-slate-100/60'}`}
+                >
+                  {txBankSlipFile ? (
+                    <div className="flex flex-col items-center gap-2">
+                      {txBankSlipPreview && <div className="h-16 w-24 overflow-hidden rounded-lg border border-slate-200"><img src={txBankSlipPreview} alt="preview" className="h-full w-full object-cover" /></div>}
+                      <span className="text-xs text-emerald-800 font-semibold">{txBankSlipName}</span>
+                      <button type="button" onClick={() => { setTxBankSlipFile(null); setTxBankSlipPreview(null); setTxBankSlipName(''); }} className="text-[10px] font-bold text-rose-500 hover:underline">Remove</button>
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      <Upload className="mx-auto h-6 w-6 text-slate-400" />
+                      <p className="mt-1 text-xs text-slate-600 font-medium">Drag file or <label className="cursor-pointer font-bold text-blue-600 hover:underline"><span>browse</span><input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleBankSlipChange(f); }} /></label></p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs font-bold uppercase text-slate-400">Withdrawal Details</p>
+              <div><label className="block text-[11px] font-semibold text-slate-500 mb-1">Withdrawal Code</label><input type="text" required value={txWithdrawalCode} onChange={(e) => setTxWithdrawalCode(e.target.value)} placeholder="e.g. WD-29348" className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500" /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="block text-[11px] font-semibold text-slate-500 mb-1">Bank</label><input type="text" required value={txWithdrawalBank} onChange={(e) => setTxWithdrawalBank(e.target.value)} placeholder="e.g. HNB" className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500" /></div>
+                <div><label className="block text-[11px] font-semibold text-slate-500 mb-1">Branch</label><input type="text" required value={txWithdrawalBranch} onChange={(e) => setTxWithdrawalBranch(e.target.value)} placeholder="e.g. Colombo 03" className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500" /></div>
+              </div>
+              <div><label className="block text-[11px] font-semibold text-slate-500 mb-1">Account Number</label><input type="text" required value={txWithdrawalAccount} onChange={(e) => setTxWithdrawalAccount(e.target.value)} placeholder="e.g. 071010018705" className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500" /></div>
+            </div>
+          )}
+          <div>
+            <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Amount LKR</label>
+            <div className="relative rounded-md shadow-xs">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><span className="text-slate-400 text-xs font-semibold">LKR</span></div>
+              <input type="number" required min={1} value={txAmount} onChange={(e) => setTxAmount(e.target.value)} placeholder="10000" className="block w-full rounded-lg border border-slate-300 pl-11 pr-3 py-2 text-sm font-mono font-semibold" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Date</label>
+            <input type="date" required value={txDate} onChange={(e) => setTxDate(e.target.value)} className="block w-full rounded-lg border border-slate-300 p-2 text-sm font-mono text-slate-850" />
+          </div>
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <button type="button" onClick={() => setIsTxModalOpen(false)} className="rounded-lg border px-4 py-2 text-xs font-semibold">Cancel</button>
+            <button type="submit" disabled={txSubmitting} className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700">{txSubmitting ? 'Recording...' : 'Record'}</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* VERIFY MODAL */}
+      <Modal isOpen={verReasonOpen} onClose={() => setVerReasonOpen(false)} title="Verify Sub-agent">
+        {verReviewUser && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-650">Confirm decision for <span className="font-bold text-slate-900">{verReviewUser.fullName}</span>: <Badge type={verStatus} /></p>
+            {verStatus === 'rejected' && (
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-405 mb-1">Rejection reason *</label>
+                <textarea required rows={3} value={verRejectReason} onChange={(e) => setVerRejectReason(e.target.value)} placeholder="Reason for rejection..." className="block w-full p-2 text-sm rounded border outline-none" />
+              </div>
+            )}
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <button onClick={() => setVerReasonOpen(false)} className="rounded-lg border px-4 py-2 text-xs font-semibold">Cancel</button>
+              <button onClick={handleVerifySubmit} disabled={verSubmitting} className={`rounded-lg px-4 py-2 text-xs font-semibold text-white ${verStatus === 'approved' ? 'bg-emerald-600' : 'bg-rose-600'}`}>{verSubmitting ? 'Recording...' : 'Confirm Action'}</button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}

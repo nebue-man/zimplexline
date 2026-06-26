@@ -7,14 +7,14 @@ const { body, param } = require('express-validator');
 const db = require('../database');
 const { authenticateToken, authorizeRoles } = require('../middleware/auth');
 const { handleValidationErrors } = require('../middleware/validate');
-const { saveIdPhoto } = require('../utils/uploadHandler');
+const { saveIdPhoto, upload } = require('../utils/uploadHandler');
 
 const SALT_ROUNDS = 12;
 const JWT_EXPIRY = '8h';
 const INVITE_EXPIRY_DAYS = 7;
 
-const ROLE_MAP = { admin: 'manager', manager: 'agent', agent: 'subagent', subagent: 'subagent' };
-const CAPACITY_LIMITS = { admin: 10, manager: 5, agent: 10, subagent: 10 };
+const ROLE_MAP = { admin: 'manager', manager: 'agent', agent: 'subagent', subagent: 'subagent', direct_agent: 'subagent' };
+const CAPACITY_LIMITS = { admin: 10, manager: 5, agent: 10, subagent: 10, direct_agent: 10 };
 
 function generateToken(user) {
   return jwt.sign(
@@ -598,6 +598,86 @@ router.patch('/invite/deactivate/:token', authenticateToken, async (req, res) =>
   } catch (err) {
     console.error('Deactivate invite error:', err);
     return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: 'Failed to deactivate invite link.' });
+  }
+});
+
+// POST /auth/register/direct-agent — Public, no invite token required
+router.post('/register/direct-agent', upload.single('promo_screenshot'), async (req, res) => {
+  try {
+    const { full_name, date_of_birth, password, confirm_password } = req.body;
+
+    if (!full_name || !full_name.trim()) {
+      return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', message: 'Full name is required.' });
+    }
+    if (!date_of_birth) {
+      return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', message: 'Date of birth is required.' });
+    }
+    if (!isAtLeast18(date_of_birth)) {
+      return res.status(400).json({ success: false, code: 'AGE_RESTRICTION', message: 'You must be at least 18 years old.' });
+    }
+    if (!password || password.length < 8) {
+      return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', message: 'Password must be at least 8 characters.' });
+    }
+    if (password !== confirm_password) {
+      return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', message: 'Passwords do not match.' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', message: 'Promo code screenshot is required.' });
+    }
+
+    const adminResult = await db.query(
+      "SELECT id FROM users WHERE role = 'admin' AND is_deleted = false LIMIT 1"
+    );
+    if (adminResult.rows.length === 0) {
+      return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: 'No admin found. Please contact support.' });
+    }
+    const adminId = adminResult.rows[0].id;
+
+    let screenshotUrl;
+    if (req.file.path && req.file.path.startsWith('http')) {
+      screenshotUrl = req.file.path;
+    } else if (req.file.secure_url) {
+      screenshotUrl = req.file.secure_url;
+    } else if (req.file.filename) {
+      screenshotUrl = `/uploads/${req.file.filename}`;
+    } else {
+      screenshotUrl = req.file.path;
+    }
+
+    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+
+    const result = await db.query(
+      `INSERT INTO users (full_name, date_of_birth, password_hash, role, parent_id, verification_status, promo_screenshot_url)
+       VALUES ($1, $2, $3, 'direct_agent', $4, 'pending', $5)
+       RETURNING id, full_name, role`,
+      [full_name.trim(), date_of_birth, passwordHash, adminId, screenshotUrl]
+    );
+
+    const newUser = result.rows[0];
+
+    await db.query(
+      `INSERT INTO notifications (recipient_id, sender_id, type, title, message, transaction_id)
+       SELECT id, $1, 'direct_agent_pending', 'New Direct Agent Registration',
+              $2, NULL
+       FROM users WHERE role = 'admin' AND is_deleted = false`,
+      [newUser.id, `A new Direct Agent ${full_name.trim()} has registered and is awaiting your approval. Please review their promo code screenshot.`]
+    );
+
+    await db.query(
+      `INSERT INTO audit_logs (actor_id, action, target_id, metadata) VALUES ($1, 'DIRECT_AGENT_REGISTERED', $1, $2)`,
+      [newUser.id, JSON.stringify({ full_name: full_name.trim(), admin_id: adminId })]
+    );
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        user_id: newUser.id,
+        message: 'Registration submitted. Your account is pending Admin approval. You will be notified once approved.',
+      },
+    });
+  } catch (err) {
+    console.error('Direct agent register error:', err);
+    return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: 'Registration failed. Please try again.' });
   }
 });
 

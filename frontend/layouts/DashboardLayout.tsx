@@ -83,6 +83,14 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           { id: 'transactions', label: 'My Transactions', icon: ArrowLeftRight },
           { id: 'verifications', label: 'Verifications', icon: CheckSquare },
         ];
+      case 'direct_agent':
+        return [
+          { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+          { id: 'team', label: 'My Team', icon: Users },
+          { id: 'transactions', label: 'Transactions', icon: ArrowLeftRight },
+          { id: 'commissions', label: 'Commissions', icon: Percent },
+          { id: 'verifications', label: 'Verifications', icon: CheckSquare },
+        ];
       default:
         return [];
     }

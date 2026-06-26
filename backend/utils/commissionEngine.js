@@ -35,6 +35,7 @@ async function calculate(transactionId, dbClient) {
   const rates = await getRates(client);
   const ancestors = await getAncestors(actor.id, client);
   const ancestorChain = ancestors.slice(1);
+  const directParentInChain = ancestorChain.length > 0 ? ancestorChain[0] : null;
 
   const insertCommission = async (beneficiaryId, percentage, commAmount, commType) => {
     if (commAmount === 0 && commType !== 'agent_locked') return;
@@ -47,11 +48,76 @@ async function calculate(transactionId, dbClient) {
     commissions.push(result.rows[0]);
   };
 
-  // Actor always earns own commission: 3% on deposit, 1% on withdrawal
+  const adminAncestor = ancestorChain.find((a) => a.role === 'admin');
+
+  // Rule Set 5: Direct Agent own transaction
+  if (actor.role === 'direct_agent') {
+    const actorRate = isDeposit ? rates['direct_agent_own_deposit'] : rates['direct_agent_own_withdrawal'];
+    await insertCommission(actor.id, actorRate, round2(amount * actorRate), isDeposit ? 'actor_deposit' : 'actor_withdrawal');
+
+    if (adminAncestor) {
+      const adminRate = isDeposit ? rates['admin_from_direct_agent_own_deposit'] : rates['admin_from_direct_agent_own_withdrawal'];
+      await insertCommission(adminAncestor.id, adminRate, round2(amount * adminRate), isDeposit ? 'admin_deposit' : 'admin_withdrawal');
+    }
+
+    // Track direct_agent's own monthly deposits for the 10k unlock threshold
+    if (isDeposit) {
+      const threshold = rates['direct_agent_unlock_threshold'];
+      const unlockRecord = await client.query(
+        'SELECT * FROM monthly_agent_unlock WHERE agent_id = $1 AND year = $2 AND month = $3',
+        [actor.id, year, month]
+      );
+      const currentTotal = unlockRecord.rows.length > 0 ? parseFloat(unlockRecord.rows[0].total_own_deposits) : 0;
+      const newTotal = currentTotal + amount;
+      const wasUnlocked = unlockRecord.rows.length > 0 && unlockRecord.rows[0].is_unlocked;
+      const nowUnlocked = newTotal >= threshold;
+      await client.query(
+        `INSERT INTO monthly_agent_unlock (agent_id, year, month, total_own_deposits, is_unlocked, unlocked_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (agent_id, year, month) DO UPDATE
+         SET total_own_deposits = $4,
+             is_unlocked = $5,
+             unlocked_at = CASE WHEN monthly_agent_unlock.is_unlocked = false AND $5 = true THEN NOW()
+                                ELSE monthly_agent_unlock.unlocked_at END`,
+        [actor.id, year, month, newTotal, nowUnlocked, nowUnlocked && !wasUnlocked ? new Date() : null]
+      );
+    }
+    return commissions;
+  }
+
+  // Rule Set 6: Sub-agent under Direct Agent
+  if (actor.role === 'subagent' && directParentInChain?.role === 'direct_agent') {
+    const actorRate = isDeposit ? rates['subagent_under_direct_agent_deposit'] : rates['subagent_under_direct_agent_withdrawal'];
+    await insertCommission(actor.id, actorRate, round2(amount * actorRate), isDeposit ? 'actor_deposit' : 'actor_withdrawal');
+
+    const directAgentId = directParentInChain.id;
+    const unlockResult = await client.query(
+      'SELECT is_unlocked FROM monthly_agent_unlock WHERE agent_id = $1 AND year = $2 AND month = $3',
+      [directAgentId, year, month]
+    );
+    const isDirectAgentUnlocked = unlockResult.rows.length > 0 && unlockResult.rows[0].is_unlocked;
+
+    if (!isDirectAgentUnlocked) {
+      await client.query(
+        `INSERT INTO commissions (transaction_id, beneficiary_id, source_user_id, percentage, amount, commission_type)
+         VALUES ($1, $2, $3, 0, 0, 'agent_locked')`,
+        [transactionId, directAgentId, actor.id]
+      );
+    } else {
+      const parentRate = isDeposit ? rates['direct_agent_subagent_deposit'] : rates['direct_agent_subagent_withdrawal'];
+      await insertCommission(directAgentId, parentRate, round2(amount * parentRate), isDeposit ? 'direct_parent_deposit' : 'direct_parent_withdrawal');
+    }
+
+    if (adminAncestor) {
+      const adminRate = isDeposit ? rates['admin_from_direct_agent_subagent_deposit'] : rates['admin_from_direct_agent_subagent_withdrawal'];
+      await insertCommission(adminAncestor.id, adminRate, round2(amount * adminRate), isDeposit ? 'admin_deposit' : 'admin_withdrawal');
+    }
+    return commissions;
+  }
+
+  // Default actor self-earn for manager, agent, and regular subagent
   const actorRate = isDeposit ? rates['actor_own_commission_deposit'] : rates['actor_own_commission_withdrawal'];
   await insertCommission(actor.id, actorRate, round2(amount * actorRate), isDeposit ? 'actor_deposit' : 'actor_withdrawal');
-
-  const adminAncestor = ancestorChain.find((a) => a.role === 'admin');
 
   if (actor.role === 'manager') {
     // Rule Set 1: Manager actor — admin earns 2%/1%

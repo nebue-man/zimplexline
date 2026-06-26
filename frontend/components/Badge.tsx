@@ -1,6 +1,6 @@
 import React from 'react';
 
-type BadgeType = 'admin' | 'manager' | 'agent' | 'subagent' | 'approved' | 'pending' | 'rejected' | 'deposit' | 'withdrawal';
+type BadgeType = 'admin' | 'manager' | 'agent' | 'subagent' | 'direct_agent' | 'approved' | 'pending' | 'rejected' | 'deposit' | 'withdrawal';
 
 interface BadgeProps {
   id?: string;
@@ -26,6 +26,9 @@ export const Badge: React.FC<BadgeProps> = ({ id, type, className = '', children
       break;
     case 'subagent':
       styles += ' bg-[#FFF1F2] text-[#9F1239]';
+      break;
+    case 'direct_agent':
+      styles += ' bg-[#F3E8FF] text-[#6B21A8]';
       break;
     case 'approved':
       styles += ' bg-[#F0FDF4] text-[#166534]';

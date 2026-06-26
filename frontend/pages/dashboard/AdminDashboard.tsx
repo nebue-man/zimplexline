@@ -87,12 +87,31 @@ const RATE_GROUPS = [
     ],
   },
   {
+    title: 'Direct Agent Rates',
+    subtitle: 'Commissions for independent Direct Agents and their sub-agents',
+    badge: 'Direct Agent',
+    badgeClass: 'bg-violet-50 text-violet-700 border-violet-200',
+    rows: [
+      { key: 'direct_agent_own_deposit',                   label: 'Own Deposit Rate',                       desc: 'Direct Agent earns on their own deposit',                        placeholder: '3 (system default)' },
+      { key: 'direct_agent_own_withdrawal',                label: 'Own Withdrawal Rate',                    desc: 'Direct Agent earns on their own withdrawal',                     placeholder: '1 (system default)' },
+      { key: 'admin_from_direct_agent_own_deposit',        label: 'Admin Share — Own Deposit',              desc: 'Admin earns when Direct Agent does own deposit',                 placeholder: '2 (system default)' },
+      { key: 'admin_from_direct_agent_own_withdrawal',     label: 'Admin Share — Own Withdrawal',           desc: 'Admin earns when Direct Agent does own withdrawal',              placeholder: '1 (system default)' },
+      { key: 'direct_agent_subagent_deposit',              label: 'Sub-agent Deposit Rate (Direct Agent earns)', desc: 'Direct Agent earns from sub-agent deposit (when unlocked)',  placeholder: '2.5 (system default)' },
+      { key: 'direct_agent_subagent_withdrawal',           label: 'Sub-agent Withdrawal Rate (Direct Agent earns)', desc: 'Direct Agent earns from sub-agent withdrawal (when unlocked)', placeholder: '1 (system default)' },
+      { key: 'subagent_under_direct_agent_deposit',        label: 'Sub-agent Own Deposit Earnings',         desc: 'Sub-agent under Direct Agent earns on own deposit',              placeholder: '1 (system default)' },
+      { key: 'subagent_under_direct_agent_withdrawal',     label: 'Sub-agent Own Withdrawal Earnings',      desc: 'Sub-agent under Direct Agent earns on own withdrawal',           placeholder: '0.4 (system default)' },
+      { key: 'admin_from_direct_agent_subagent_deposit',   label: 'Admin Share — Sub-agent Deposit',        desc: 'Admin earns from sub-agent deposit in Direct Agent team',        placeholder: '1.5 (system default)' },
+      { key: 'admin_from_direct_agent_subagent_withdrawal',label: 'Admin Share — Sub-agent Withdrawal',     desc: 'Admin earns from sub-agent withdrawal in Direct Agent team',     placeholder: '0.6 (system default)' },
+    ],
+  },
+  {
     title: 'Thresholds',
     subtitle: 'Monthly unlock requirements',
     badge: 'Threshold',
     badgeClass: 'bg-blue-50 text-blue-700 border-blue-200',
     rows: [
-      { key: 'agent_unlock_threshold', label: 'Agent Unlock Threshold (LKR)', desc: 'Min own monthly deposits for Agent to earn Sub-agent commissions', placeholder: '10000 (system default)' },
+      { key: 'agent_unlock_threshold',        label: 'Agent Unlock Threshold (LKR)',        desc: 'Min own monthly deposits for Agent to earn Sub-agent commissions',        placeholder: '10000 (system default)' },
+      { key: 'direct_agent_unlock_threshold', label: 'Direct Agent Unlock Threshold (LKR)', desc: 'Min own monthly deposits for Direct Agent to earn Sub-agent commissions', placeholder: '10000 (system default)' },
     ],
   },
 ];
@@ -645,6 +664,7 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
                 <option value="">All Roles</option>
                 <option value="manager">Managers</option>
                 <option value="agent">Agents</option>
+                <option value="direct_agent">Direct Agents</option>
                 <option value="subagent">Sub-agents</option>
               </select>
 
@@ -1524,6 +1544,7 @@ export default function AdminDashboard({ activeTab, setActiveTab }: AdminDashboa
               >
                 <option value="manager">Manager</option>
                 <option value="agent">Agent</option>
+                <option value="direct_agent">Direct Agent</option>
                 <option value="subagent">Sub-agent</option>
               </select>
             </div>

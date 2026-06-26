@@ -8,6 +8,7 @@ import AdminDashboard from './AdminDashboard';
 import ManagerDashboard from './ManagerDashboard';
 import AgentDashboard from './AgentDashboard';
 import SubagentDashboard from './SubagentDashboard';
+import DirectAgentDashboard from './DirectAgentDashboard';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -35,6 +36,8 @@ export default function Dashboard() {
         return <AgentDashboard activeTab={activeTab} setActiveTab={setActiveTab} />;
       case 'subagent':
         return <SubagentDashboard activeTab={activeTab} setActiveTab={setActiveTab} />;
+      case 'direct_agent':
+        return <DirectAgentDashboard activeTab={activeTab} setActiveTab={setActiveTab} />;
       default:
         return (
           <div className="flex h-[320px] items-center justify-center rounded-xl bg-white p-6 border text-slate-500 text-sm font-mono">

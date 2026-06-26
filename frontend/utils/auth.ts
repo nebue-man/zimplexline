@@ -51,6 +51,7 @@ const ROLE_HIERARCHY: { [key in UserRole]: number } = {
   admin: 4,
   manager: 3,
   agent: 2,
+  direct_agent: 2,
   subagent: 1,
 };
 

@@ -8,6 +8,7 @@ const {
   getManagerSummary,
   getAgentSummary,
   getSubagentSummary,
+  getDirectAgentSummary,
   getEarningsHistory,
 } = require('../utils/dashboardQueries');
 const db = require('../database');
@@ -24,6 +25,8 @@ router.get('/summary', authenticateToken, async (req, res) => {
       data = await getManagerSummary(userId);
     } else if (role === 'agent') {
       data = await getAgentSummary(userId);
+    } else if (role === 'direct_agent') {
+      data = await getDirectAgentSummary(userId);
     } else {
       data = await getSubagentSummary(userId);
     }
@@ -180,7 +183,7 @@ router.get('/subagent-thresholds', authenticateToken, async (req, res) => {
   try {
     const { id: userId, role } = req.user;
 
-    if (role !== 'agent' && role !== 'admin') {
+    if (role !== 'agent' && role !== 'admin' && role !== 'direct_agent') {
       return res.status(403).json({ success: false, code: 'FORBIDDEN', message: 'Only agents can view subagent thresholds.' });
     }
 
@@ -227,7 +230,7 @@ router.get('/agent-unlock-status', authenticateToken, async (req, res) => {
   try {
     const { id: userId, role } = req.user;
 
-    if (role !== 'agent' && role !== 'admin') {
+    if (role !== 'agent' && role !== 'admin' && role !== 'direct_agent') {
       return res.status(403).json({ success: false, code: 'FORBIDDEN', message: 'Only agents can view unlock status.' });
     }
 
@@ -235,9 +238,10 @@ router.get('/agent-unlock-status', authenticateToken, async (req, res) => {
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
 
+    const thresholdKey = role === 'direct_agent' ? 'direct_agent_unlock_threshold' : 'agent_unlock_threshold';
     const ratesResult = await db.query(
       'SELECT rate_value FROM commission_rates WHERE rate_key = $1',
-      ['agent_unlock_threshold']
+      [thresholdKey]
     );
     const threshold = ratesResult.rows.length > 0 ? parseFloat(ratesResult.rows[0].rate_value) : 10000;
 
