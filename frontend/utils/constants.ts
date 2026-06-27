@@ -76,6 +76,8 @@ export const API_ENDPOINTS = {
     unreadCount: '/notifications/unread-count',
     markRead: (id: string) => `/notifications/${id}/read`,
     markAllRead: '/notifications/read-all',
+    approveCommissions: (id: string) => `/notifications/${id}/approve-commissions`,
+    rejectCommissions: (id: string) => `/notifications/${id}/reject-commissions`,
   },
   admin: {
     users: '/admin/users',

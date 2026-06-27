@@ -67,5 +67,21 @@ export function useNotifications() {
     }
   };
 
-  return { notifications, unreadCount, loading, markAsRead, markAllAsRead, refresh: fetchNotifications };
+  const approveCommissions = async (notificationId: string): Promise<void> => {
+    await api.patch(API_ENDPOINTS.notifications.approveCommissions(notificationId));
+    setNotifications((prev) =>
+      prev.map((n) => n.id === notificationId ? { ...n, is_read: true, _commissionActioned: 'approved' } : n)
+    );
+    setUnreadCount((prev) => Math.max(0, prev - 1));
+  };
+
+  const rejectCommissions = async (notificationId: string): Promise<void> => {
+    await api.patch(API_ENDPOINTS.notifications.rejectCommissions(notificationId));
+    setNotifications((prev) =>
+      prev.map((n) => n.id === notificationId ? { ...n, is_read: true, _commissionActioned: 'rejected' } : n)
+    );
+    setUnreadCount((prev) => Math.max(0, prev - 1));
+  };
+
+  return { notifications, unreadCount, loading, markAsRead, markAllAsRead, approveCommissions, rejectCommissions, refresh: fetchNotifications };
 }

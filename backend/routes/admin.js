@@ -754,14 +754,6 @@ router.patch(
         `UPDATE transactions SET transaction_status = 'approved' WHERE id = $1`,
         [req.params.id]
       );
-      await db.query(
-        `UPDATE commissions SET commission_status = 'approved' WHERE transaction_id = $1`,
-        [req.params.id]
-      );
-      await db.query(
-        `UPDATE notifications SET is_read = true WHERE transaction_id = $1`,
-        [req.params.id]
-      );
 
       return res.json({ success: true, data: { transactionId: req.params.id, transaction_status: 'approved', message: 'Transaction approved.' } });
     } catch (err) {
@@ -796,10 +788,6 @@ router.patch(
 
       await db.query(
         `UPDATE transactions SET transaction_status = 'rejected' WHERE id = $1`,
-        [req.params.id]
-      );
-      await db.query(
-        `UPDATE commissions SET commission_status = 'rejected' WHERE transaction_id = $1`,
         [req.params.id]
       );
 

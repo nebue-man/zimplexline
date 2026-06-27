@@ -52,6 +52,23 @@ export interface Commission {
   commission_status?: 'pending' | 'approved' | 'rejected';
 }
 
+export interface CommissionItem {
+  id: string;
+  beneficiary_name: string;
+  beneficiary_role: string;
+  percentage: number;
+  amount: number;
+  commission_type: string;
+  commission_status: string;
+}
+
+export interface NotificationMetadata {
+  transaction_id: string;
+  transaction_type: 'deposit' | 'withdrawal';
+  transaction_amount: number;
+  commissions: CommissionItem[];
+}
+
 export interface Notification {
   id: string;
   type: string;
@@ -60,6 +77,7 @@ export interface Notification {
   is_read: boolean;
   created_at: string;
   transaction_id: string | null;
+  metadata: NotificationMetadata | null;
   sender_id: string;
   sender: { full_name: string; role: string };
 }

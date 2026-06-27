@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 import { Badge } from '../components/Badge';
 import { useNotifications } from '../hooks/useNotifications';
+import { formatLKR } from '../utils/format';
+import { Notification } from '../types';
 import {
   LayoutDashboard,
   Users,
@@ -16,6 +18,9 @@ import {
   Bell,
   Menu,
   X,
+  Check,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react';
 
 interface SidebarItem {
@@ -43,7 +48,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const [isNotifOpen, setIsNotifOpen] = useState(false);
-  const { notifications, unreadCount, loading: notifLoading, markAsRead, markAllAsRead, refresh: fetchNotifications } = useNotifications();
+  const [commActionLoading, setCommActionLoading] = useState<Record<string, boolean>>({});
+  const [commActioned, setCommActioned] = useState<Record<string, 'approved' | 'rejected'>>({});
+  const { notifications, unreadCount, loading: notifLoading, markAsRead, markAllAsRead, approveCommissions, rejectCommissions, refresh: fetchNotifications } = useNotifications();
 
   if (!user) return null;
 
@@ -257,31 +264,127 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                       )}
                     </div>
 
-                    <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                    <div className="max-h-[480px] overflow-y-auto divide-y divide-slate-100">
                       {notifLoading ? (
                         <div className="py-8 text-center text-xs text-slate-400">Loading…</div>
                       ) : notifications.length === 0 ? (
                         <div className="py-8 text-center text-xs text-slate-400">No notifications yet.</div>
                       ) : (
-                        notifications.map((notif) => (
-                          <div
-                            key={notif.id}
-                            onClick={async () => {
-                              if (!notif.is_read) await markAsRead(notif.id);
-                              setIsNotifOpen(false);
-                              if (notif.sender_id) navigate(`/admin/users/${notif.sender_id}/transactions`);
-                            }}
-                            className={`cursor-pointer px-4 py-3 hover:bg-slate-50 transition ${!notif.is_read ? 'border-l-2 border-blue-500 bg-blue-50/30' : ''}`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <p className={`text-xs leading-tight ${!notif.is_read ? 'font-bold text-slate-900' : 'font-semibold text-slate-700'}`}>
-                                {notif.title}
-                              </p>
-                              <span className="text-[9px] text-slate-400 shrink-0 font-mono">{timeAgo(notif.created_at)}</span>
+                        notifications.map((notif) => {
+                          const hasCommissions = user?.role === 'admin' &&
+                            notif.metadata?.commissions &&
+                            notif.metadata.commissions.length > 0 &&
+                            (notif.type === 'deposit_pending' || notif.type === 'withdrawal_pending');
+                          const actioned = commActioned[notif.id];
+                          const isLoading = commActionLoading[notif.id];
+                          const totalComm = notif.metadata?.commissions?.reduce((s, c) => s + c.amount, 0) || 0;
+
+                          return (
+                            <div
+                              key={notif.id}
+                              className={`px-4 py-3 transition ${!notif.is_read ? 'border-l-2 border-blue-500 bg-blue-50/30' : ''}`}
+                            >
+                              {/* Header row — clickable to navigate */}
+                              <div
+                                className="flex items-start justify-between gap-2 cursor-pointer"
+                                onClick={async () => {
+                                  if (!notif.is_read) await markAsRead(notif.id);
+                                  if (!hasCommissions) {
+                                    setIsNotifOpen(false);
+                                    if (notif.sender_id) navigate(`/admin/users/${notif.sender_id}/transactions`);
+                                  }
+                                }}
+                              >
+                                <p className={`text-xs leading-tight ${!notif.is_read ? 'font-bold text-slate-900' : 'font-semibold text-slate-700'}`}>
+                                  {notif.title}
+                                </p>
+                                <span className="text-[9px] text-slate-400 shrink-0 font-mono">{timeAgo(notif.created_at)}</span>
+                              </div>
+                              <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">{notif.message}</p>
+
+                              {/* Commission breakdown — admin only */}
+                              {hasCommissions && (
+                                <div className="mt-2 rounded-md bg-slate-50 border border-slate-200 p-2 space-y-1">
+                                  <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Commission Breakdown</p>
+                                  {notif.metadata!.commissions.map((c) => (
+                                    <div key={c.id} className="flex items-center justify-between gap-1">
+                                      <div className="flex items-center gap-1.5 min-w-0">
+                                        <span className="text-[10px] font-semibold text-slate-700 truncate">{c.beneficiary_name}</span>
+                                        <Badge type={c.beneficiary_role} className="text-[8px] px-1 py-0" />
+                                      </div>
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <span className="text-[9px] text-slate-400 font-mono">{(c.percentage * 100).toFixed(2)}%</span>
+                                        <span className="text-[10px] font-bold font-mono text-slate-900">{formatLKR(c.amount)}</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                  <div className="flex justify-between pt-1 border-t border-slate-200 mt-1">
+                                    <span className="text-[9px] font-semibold text-slate-500">Total commissions</span>
+                                    <span className="text-[10px] font-bold font-mono text-slate-900">{formatLKR(totalComm)}</span>
+                                  </div>
+
+                                  {/* Action buttons or status badge */}
+                                  {actioned ? (
+                                    <div className="flex justify-center pt-1">
+                                      {actioned === 'approved' ? (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                                          <CheckCircle className="h-3 w-3" /> Commissions Approved
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded">
+                                          <XCircle className="h-3 w-3" /> Commissions Rejected
+                                        </span>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div className="flex gap-2 pt-1.5">
+                                      <button
+                                        disabled={isLoading}
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          setCommActionLoading((prev) => ({ ...prev, [notif.id]: true }));
+                                          try {
+                                            await approveCommissions(notif.id);
+                                            setCommActioned((prev) => ({ ...prev, [notif.id]: 'approved' }));
+                                            fetchNotifications();
+                                          } catch {
+                                            // silent
+                                          } finally {
+                                            setCommActionLoading((prev) => ({ ...prev, [notif.id]: false }));
+                                          }
+                                        }}
+                                        className="flex-1 inline-flex items-center justify-center gap-1 rounded bg-emerald-600 text-white text-[10px] font-bold px-2 py-1 hover:bg-emerald-700 disabled:opacity-50 transition cursor-pointer"
+                                      >
+                                        {isLoading ? <div className="h-3 w-3 animate-spin rounded-full border border-white border-t-transparent" /> : <Check className="h-3 w-3" />}
+                                        Approve
+                                      </button>
+                                      <button
+                                        disabled={isLoading}
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          setCommActionLoading((prev) => ({ ...prev, [notif.id]: true }));
+                                          try {
+                                            await rejectCommissions(notif.id);
+                                            setCommActioned((prev) => ({ ...prev, [notif.id]: 'rejected' }));
+                                            fetchNotifications();
+                                          } catch {
+                                            // silent
+                                          } finally {
+                                            setCommActionLoading((prev) => ({ ...prev, [notif.id]: false }));
+                                          }
+                                        }}
+                                        className="flex-1 inline-flex items-center justify-center gap-1 rounded border border-rose-300 text-rose-600 text-[10px] font-bold px-2 py-1 hover:bg-rose-50 disabled:opacity-50 transition cursor-pointer"
+                                      >
+                                        {isLoading ? <div className="h-3 w-3 animate-spin rounded-full border border-rose-400 border-t-transparent" /> : <X className="h-3 w-3" />}
+                                        Reject
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
-                            <p className="text-[10px] text-slate-500 mt-0.5 leading-snug line-clamp-2">{notif.message}</p>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
 

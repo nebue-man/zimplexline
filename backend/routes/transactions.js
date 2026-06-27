@@ -224,6 +224,26 @@ router.post(
       );
       const adminId = adminResult.rows[0]?.id;
 
+      // Fetch commission breakdown for notification metadata
+      const commBreakdown = await client.query(
+        `SELECT c.id, c.beneficiary_id, c.percentage, c.amount, c.commission_type, c.commission_status,
+                u.full_name AS beneficiary_name, u.role AS beneficiary_role
+         FROM commissions c
+         JOIN users u ON c.beneficiary_id = u.id
+         WHERE c.transaction_id = $1 AND c.amount > 0
+         ORDER BY c.amount DESC`,
+        [transactionId]
+      );
+      const commissionsForMeta = commBreakdown.rows.map((c) => ({
+        id: c.id,
+        beneficiary_name: c.beneficiary_name,
+        beneficiary_role: c.beneficiary_role,
+        percentage: parseFloat(c.percentage),
+        amount: parseFloat(c.amount),
+        commission_type: c.commission_type,
+        commission_status: c.commission_status,
+      }));
+
       // Build notification message and insert
       let notificationSent = false;
       if (adminId) {
@@ -239,10 +259,18 @@ router.post(
           notifTitle = 'New Withdrawal — Pending Approval';
           notifMessage = `User: ${userFullName} (${userRole})\nAmount: LKR ${parseFloat(amount).toFixed(2)}\nWithdrawal Code: ${wd.withdrawal_code || 'N/A'}\nBank: ${wd.bank || 'N/A'}\nBranch: ${wd.branch || 'N/A'}\nAccount: ${wd.account_number || 'N/A'}\nDate: ${txDateStr}`;
         }
+
+        const metadata = {
+          transaction_id: transactionId,
+          transaction_type: type,
+          transaction_amount: parseFloat(amount),
+          commissions: commissionsForMeta,
+        };
+
         await client.query(
-          `INSERT INTO notifications (recipient_id, sender_id, transaction_id, type, title, message)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [adminId, userId, transactionId, notifType, notifTitle, notifMessage]
+          `INSERT INTO notifications (recipient_id, sender_id, transaction_id, type, title, message, metadata)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [adminId, userId, transactionId, notifType, notifTitle, notifMessage, JSON.stringify(metadata)]
         );
         notificationSent = true;
       }
